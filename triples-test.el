@@ -117,6 +117,13 @@ easily debug into it.")
     (triples-delete-subject db "foo")
     (should-not (triples-get-subject db "foo"))))
 
+(ert-deftest triples-single-element ()
+  (triples-test-with-temp-db
+   (triples-add-schema db 'named 'name)
+   (triples-set-type db "foo" 'named :name '("Name"))
+   (should (equal '(:name ("Name"))
+                  (triples-get-type db "foo" 'named)))))
+
 (ert-deftest triples-reversed ()
   (triples-test-with-temp-db
    (triples-add-schema db 'named

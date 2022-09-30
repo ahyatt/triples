@@ -194,7 +194,7 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
     (append
      (cl-loop for k being the hash-keys of preds using (hash-values v)
               nconc (list (triples--encolon (cdr (triples--combined-to-type-and-prop k)))
-                          (if (and (cdr v)
+                          (if (and (car v)
                                    (plist-get (cdar v) :index))
                               (mapcar #'car (sort v (lambda (a b)
                                                       (< (plist-get (cdr a) :index)
