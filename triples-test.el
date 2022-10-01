@@ -1,6 +1,7 @@
 ;;; triples-test.el --- Tests for triples module.
 (require 'triples)
 (require 'seq)
+(require 'kv)
 
 ;;; Code:
 
@@ -46,6 +47,10 @@ easily debug into it.")
               (named schema/property alternate-names)
               (named schema/property nicknames))))))
 
+(defun triples-test-list-sort (list)
+  "Standard sort for LIST for test stability."
+  (sort list (lambda (a b) (string< (format "%s" a) (format "%s" b))) ))
+
 (ert-deftest triples-schema-crud ()
   (triples-test-with-temp-db
     (triples-add-schema db 'named
@@ -53,8 +58,8 @@ easily debug into it.")
     (should (equal '(:base/unique t)
            (triples-properties-for-predicate db 'named/name)))
     (should (equal
-             '(name alternate-names)
-             (triples-predicates-for-type db 'named)))))
+             (triples-test-list-sort '(name alternate-names))
+             (triples-test-list-sort (triples-predicates-for-type db 'named))))))
 
 (ert-deftest triples-properties-for-predicate ()
   (triples-test-with-temp-db
@@ -88,14 +93,20 @@ easily debug into it.")
     (should-error (triples-verify-schema-compliant db '(("foo" named/name "bar" (:index 0)))))
     (should (triples-verify-schema-compliant db '(("foo" named/alternate-names "bar" (:index 0)))))))
 
+(defun triples-test-plist-sort (plist)
+  "Sort PLIST in a standard way, for comparison."
+  (kvalist->plist
+   (kvalist-sort (kvplist->alist plist)
+                 (lambda (a b) (string< (format "%s" a) (format "%s" b))))))
+
 (ert-deftest triples-crud ()
   (triples-test-with-temp-db
    (triples-add-schema db 'named
                        '(name :unique t)
                        'alias)
    (triples-set-type db "foo" 'named :name "Name" :alias '("alias1" "alias2"))
-   (should (equal '(:name "Name" :alias ("alias1" "alias2"))
-                  (triples-get-type db "foo" 'named)))
+   (should (equal (triples-test-plist-sort '(:name "Name" :alias ("alias1" "alias2")))
+                  (triples-test-plist-sort (triples-get-type db "foo" 'named))))
    (should (equal (triples-get-types db "foo") '(named)))
    (should-not (triples-get-type db "bar" 'named))
    (should-not (triples-get-types db "bar"))
@@ -138,16 +149,6 @@ easily debug into it.")
                   (triples-get-type db "en/US" 'locale)))
    (should-error (triples-set-type db "en/US" 'locale :used-in-name '("bar")))))
 
-(ert-deftest triples-with-preciate-object ()
-  (triples-test-with-temp-db
-   (triples-add-schema db 'named '(name))
-   (should-not (triples-search db 'named/name "Fred"))
-   (triples-set-type db "foo" 'named :name "My Name Is Fred Foo")
-   (triples-set-type db "bar" 'named :name "My Name Is Betty Bar")
-   (should (equal
-            '(("foo" named/name "My Name Is Fred Foo" nil))
-            (triples-search db 'named/name "Fred")))))
-
 (ert-deftest triples-with-predicate ()
   (triples-test-with-temp-db
    (triples-add-schema db 'named '(name))
@@ -163,12 +164,27 @@ easily debug into it.")
 
 (ert-deftest triples-subjects-of-type ()
   (triples-test-with-temp-db
-   (triples-add-schema db 'named '(name))
-   (should-not (triples-subjects-of-type db 'named))
-   (triples-set-type db "foo" 'named :name "My Name Is Fred Foo")
-   (triples-set-type db "bar" 'named :name "My Name Is Betty Bar")
-   (should (seq-set-equal-p '("foo" "bar")
-                            (triples-subjects-of-type db 'named)))))
+    (triples-add-schema db 'named '(name))
+    (should-not (triples-subjects-of-type db 'named))
+    (triples-set-type db "foo" 'named :name "My Name Is Fred Foo")
+    (triples-set-type db "bar" 'named :name "My Name Is Betty Bar")
+    (should (seq-set-equal-p '("foo" "bar")
+                             (triples-subjects-of-type db 'named)))))
+
+(ert-deftest triples-no-dups ()
+  (triples-test-with-temp-db
+    ;; Just add a marker schema, no attributes
+    (triples-add-schema db 'marker)
+    (triples-set-type db "foo" 'marker)
+    (should (equal '((1))
+                (emacsql db [:select (funcall count) :from triples :where (= subject $s1)
+                             :and (= predicate 'base/type) :and (= object 'marker)]
+                         "foo")))
+    (triples-set-type db "foo" 'marker)
+    (should (equal '((1))
+                (emacsql db [:select (funcall count) :from triples :where (= subject $s1)
+                             :and (= predicate 'base/type) :and (= object 'marker)]
+                         "foo")))))
 
 (ert-deftest triples-readme ()
   (triples-test-with-temp-db
@@ -185,14 +201,18 @@ easily debug into it.")
   (triples-delete-subject db "alice")
   (triples-set-type db "alice" 'person :name "Alice Aardvark" :age 41)
   (triples-set-type db "alice" 'employee :id 1901 :manager "bob")
-  (should (equal (triples-get-subject db "alice")
-                 '(:person/name "Alice Aardvark" :person/age 41 :employee/id 1901
-                                :employee/manager "bob" :employee/reportees ("catherine" "dennis"))))
+  (should (equal (triples-test-plist-sort (triples-get-subject db "alice"))
+                 (triples-test-plist-sort '(:person/name "Alice Aardvark" :person/age 41
+                                                         :employee/id 1901
+                                                         :employee/manager "bob"
+                                                         :employee/reportees ("catherine" "dennis")))))
   (triples-set-subject db "alice" '(person :name "Alice Aardvark" :age 41)
                        '(employee :id 1901 :manager "bob"))
-  (should (equal (triples-get-subject db "alice")
-                 '(:person/name "Alice Aardvark" :person/age 41 :employee/id 1901
-                                :employee/manager "bob" :employee/reportees ("catherine" "dennis"))))))
+  (should (equal (triples-test-plist-sort (triples-get-subject db "alice"))
+                 (triples-test-plist-sort '(:person/name "Alice Aardvark" :person/age 41
+                                                         :employee/id 1901
+                                                         :employee/manager "bob"
+                                                         :employee/reportees ("catherine" "dennis")))))))
 
 
 (provide 'triples-test)

@@ -44,14 +44,18 @@
                                                (properties)])])
       (emacsql db [:create-index subject_idx :on triples [subject]])
       (emacsql db [:create-index subject_predicate_idx :on triples [subject predicate]])
-      (emacsql db [:create-index predicate_object_idx :on triples [predicate object]]))
+      (emacsql db [:create-index predicate_object_idx :on triples [predicate object]])
+      (emacsql db [:create-unique-index subject_predicate_object_properties_idx :on triples [subject predicate object properties]]))
     db))
 
 (defun triples--ensure-property-val (vec)
-  "Return a VEC has 4 elements."
+  "Return a VEC has 4 elements.
+We add a bogus value as a property because we want to be able
+to enforce unique constraints, which sqlite will not do will NULL
+values."
   (if (= (length vec) 4)
       vec
-    (vconcat vec '(nil))))
+    (vconcat vec '((:empty t)))))
 
 (defun triples--subjects (triples)
   "Return all unique subjects in TRIPLES."
@@ -96,7 +100,7 @@
                                                      (mapcar #'cl-second (cdr sub-triples)))))))
              (triples--group-by-subjects (cdr op)))))
     (mapc (lambda (triple)
-            (emacsql db [:insert :into triples
+            (emacsql db [:replace :into triples
                          :values $v1] (triples--ensure-property-val
                                        (apply #'vector triple))))
           (cdr op)))
