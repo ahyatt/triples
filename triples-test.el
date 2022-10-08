@@ -128,6 +128,17 @@ easily debug into it.")
     (triples-delete-subject db "foo")
     (should-not (triples-get-subject db "foo"))))
 
+(ert-deftest triples-set-types ()
+  (triples-test-with-temp-db
+    (triples-add-schema db 'named
+                       '(name :unique t)
+                       'alias)
+    (triples-add-schema db 'reachable 'phone)
+    (triples-set-type db "foo" 'named :name "Name" :alias '("alias1" "alias2"))
+    (triples-set-types db "foo" :named/name "New Name" :reachable/phone '("867-5309"))
+    (should (equal (triples-test-plist-sort '(:named/name "New Name" :reachable/phone ("867-5309")))
+                   (triples-test-plist-sort (triples-get-subject db "foo"))))))
+
 (ert-deftest triples-single-element ()
   (triples-test-with-temp-db
    (triples-add-schema db 'named 'name)

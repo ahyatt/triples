@@ -168,6 +168,22 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
     (triples-verify-schema-compliant db (cdr op))
     (triples--add db op)))
 
+(defun triples-set-types (db subject &rest combined-props)
+  "Set all data for types in COMBINED-PROPS in DB for SUBJECT.
+COMBINED-PROPS is a plist which takes combined properties such as
+:named/name and their values. All other data related to the types
+given in the COMBINED-PROPS will be removed."
+  (let ((type-to-plist (make-hash-table)))
+    (triples--plist-mapc
+     (lambda (cp val)
+       (pcase-let ((`(,type . ,prop) (triples-combined-to-type-and-prop cp)))
+         (puthash (triples--decolon type)
+                  (plist-put (gethash (triples--decolon type) type-to-plist)
+                             (triples--encolon prop) val) type-to-plist)))
+     combined-props)
+    (cl-loop for k being the hash-keys of type-to-plist using (hash-values v)
+             do (apply #'triples-set-type db subject k v))))
+
 (defun triples--set-type-op (subject type properties)
   "Create operation to replace PROPERTIES for TYPE for SUBJECT.
 PROPERTIES is a plist of properties, without TYPE prefixes."
