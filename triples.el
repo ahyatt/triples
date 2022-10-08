@@ -181,8 +181,9 @@ given in the COMBINED-PROPS will be removed."
                   (plist-put (gethash (triples--decolon type) type-to-plist)
                              (triples--encolon prop) val) type-to-plist)))
      combined-props)
-    (cl-loop for k being the hash-keys of type-to-plist using (hash-values v)
-             do (apply #'triples-set-type db subject k v))))
+    (emacsql-with-transaction db
+      (cl-loop for k being the hash-keys of type-to-plist using (hash-values v)
+               do (apply #'triples-set-type db subject k v)))))
 
 (defun triples--set-type-op (subject type properties)
   "Create operation to replace PROPERTIES for TYPE for SUBJECT.
