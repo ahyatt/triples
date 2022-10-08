@@ -96,7 +96,7 @@ values."
                                       :and (like predicate $r2)]
                                   (car sub-triples) (format "%s/%%" type))))
                      (seq-uniq
-                      (mapcar #'car (mapcar #'triples--combined-to-type-and-prop
+                      (mapcar #'car (mapcar #'triples-combined-to-type-and-prop
                                                      (mapcar #'cl-second (cdr sub-triples)))))))
              (triples--group-by-subjects (cdr op)))))
     (mapc (lambda (triple)
@@ -120,7 +120,7 @@ values."
 (defun triples-verify-schema-compliant (db triples)
   "Error if TRIPLES is not compliant with schema in DB."
   (mapc (lambda (triple)
-          (pcase-let ((`(,type . ,prop) (triples--combined-to-type-and-prop (nth 1 triple))))
+          (pcase-let ((`(,type . ,prop) (triples-combined-to-type-and-prop (nth 1 triple))))
             (unless (or (eq type 'base) 
                         (emacsql db [:select * :from triples :where (= subject $s1)
                                      :and (= predicate 'schema/property) :and (= object $s2)]
@@ -179,10 +179,10 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
                      (cl-loop for e in v for i from 0
                               collect
                               (list subject
-                                    (triples--type-and-prop-to-combined type prop)
+                                    (triples-type-and-prop-to-combined type prop)
                                     e
                                     (list :index i)))
-                   (list (list subject (triples--type-and-prop-to-combined type prop) v))))
+                   (list (list subject (triples-type-and-prop-to-combined type prop) v))))
                properties))))
 
 (defun triples-get-type (db subject type)
@@ -197,7 +197,7 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
                        :and (like predicate $r2)] subject (format "%s/%%" type)))
     (append
      (cl-loop for k being the hash-keys of preds using (hash-values v)
-              nconc (list (triples--encolon (cdr (triples--combined-to-type-and-prop k)))
+              nconc (list (triples--encolon (cdr (triples-combined-to-type-and-prop k)))
                           (if (and (car v)
                                    (plist-get (cdar v) :index))
                               (mapcar #'car (sort v (lambda (a b)
@@ -208,7 +208,7 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
               nconc
               (let ((reversed-prop (plist-get
                                     (triples-properties-for-predicate
-                                     db (triples--type-and-prop-to-combined type pred))
+                                     db (triples-type-and-prop-to-combined type pred))
                                     :base/virtual-reversed)))
                 (when reversed-prop
                   (let ((result (emacsql db [:select subject :from triples :where (= object $s1)
@@ -271,13 +271,13 @@ TYPE-VALS-CONS is a list of conses, combining a type and a plist of values."
   "Return a list of all subjects with a particular TYPE in DB."
   (mapcar #'car (triples-subjects-with-predicate-object db 'base/type type)))
 
-(defun triples--combined-to-type-and-prop (combined)
+(defun triples-combined-to-type-and-prop (combined)
   "Return cons of type and prop that form the COMBINED normal representation.
 This is something of form `:type/prop'."
   (let ((s (split-string (format "%s" combined) "/")))
     (cons (triples--decolon (nth 0 s)) (intern (nth 1 s)))))
 
-(defun triples--type-and-prop-to-combined (type prop)
+(defun triples-type-and-prop-to-combined (type prop)
   (intern (format "%s/%s" (triples--decolon type) (triples--decolon prop))))
 
 (defun triples--plist-mapc (fn plist)
