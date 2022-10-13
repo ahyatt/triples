@@ -1,5 +1,4 @@
-;;; triples.el --- This package provides a triple-based database, as well as
-;;; functions to store, retrieve, and modify the information it contains.
+;;; triples.el --- A flexible triple-based database for us in apps.  -*- lexical-binding: t; -*-
 
 ;; Copyright (c) 2022  Free Software Foundation, Inc.
 
@@ -30,8 +29,10 @@
 (require 'emacsql)
 (require 'seq)
 
+;;; Code:
+
 (defun triples-connect (file)
-  "Connect to the database and make sure it is populated."
+  "Connect to the database FILE and make sure it is populated."
   (let* ((db (emacsql-sqlite3 file))
          (triple-table-exists
           (emacsql db [:select name
@@ -106,7 +107,7 @@ values."
           (cdr op)))
 
 (defun triples-properties-for-predicate (db cpred)
-  "Return the properties for combined predicate CPRED as a plist."
+  "Return the properties in DB for combined predicate CPRED as a plist."
   (mapcan (lambda (row)
             (list (intern (format ":%s" (nth 1 row))) (nth 2 row)))
           (emacsql db [:select * :from triples :where (= subject $s1)] cpred)))
@@ -121,11 +122,11 @@ values."
   "Error if TRIPLES is not compliant with schema in DB."
   (mapc (lambda (triple)
           (pcase-let ((`(,type . ,prop) (triples-combined-to-type-and-prop (nth 1 triple))))
-            (unless (or (eq type 'base) 
+            (unless (or (eq type 'base)
                         (emacsql db [:select * :from triples :where (= subject $s1)
                                      :and (= predicate 'schema/property) :and (= object $s2)]
                                  type prop))
-              (error "Property %s not found in schema." (nth 1 triple)))))
+              (error "Property %s not found in schema" (nth 1 triple)))))
         triples)
   (mapc (lambda (triple)
           (triples--plist-mapc (lambda (pred-prop val)
@@ -209,7 +210,7 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
             (puthash (nth 1 db-triple)
                      (cons (cons (nth 2 db-triple) (nth 3 db-triple))
                            (gethash (nth 1 db-triple) preds))
-                     preds)) 
+                     preds))
           (emacsql db [:select * :from triples :where (= subject $s1)
                        :and (like predicate $r2)] subject (format "%s/%%" type)))
     (append
@@ -265,7 +266,7 @@ TYPE-VALS-CONS is a list of conses, combining a type and a plist of values."
           type-vals-cons)))
 
 (defun triples-delete-subject (db subject)
-  "Delete all data with DB as the subject."
+  "Delete all data in DB associated with SUBJECT."
   (emacsql-with-transaction db
     (emacsql db [:delete :from triples :where (= subject $s1)] subject)))
 
@@ -295,6 +296,7 @@ This is something of form `:type/prop'."
     (cons (triples--decolon (nth 0 s)) (intern (nth 1 s)))))
 
 (defun triples-type-and-prop-to-combined (type prop)
+  "Format TYPE and PROP to a combined format - type/prop."
   (intern (format "%s/%s" (triples--decolon type) (triples--decolon prop))))
 
 (defun triples--plist-mapc (fn plist)
@@ -343,7 +345,7 @@ FN must take two arguments: the key and the value."
 
 (defun triples-verify-base/virtual-reversed-compliant (_ triple)
   "Virtual reversed properties shouldn't be set manually, so are never compliant."
-  (error "Invalid triple found: %s, should not be setting a `base/virtual-reversed' property."
+  (error "Invalid triple found: %s, should not be setting a `base/virtual-reversed' property"
          triple))
 
 (provide 'triples)

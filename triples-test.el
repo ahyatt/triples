@@ -1,4 +1,4 @@
-;;; triples-test.el --- Tests for triples module.
+;;; triples-test.el --- Tests for triples module.  -*- lexical-binding: t; -*-
 (require 'triples)
 (require 'seq)
 (require 'kv)
