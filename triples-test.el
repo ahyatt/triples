@@ -102,7 +102,7 @@ easily debug into it.")
 (ert-deftest triples-crud ()
   (triples-test-with-temp-db
    (triples-add-schema db 'named
-                       '(name :unique t)
+                       '(name :base/unique t)
                        'alias)
    (triples-set-type db "foo" 'named :name "Name" :alias '("alias1" "alias2"))
    (should (equal (triples-test-plist-sort '(:name "Name" :alias ("alias1" "alias2")))
@@ -117,8 +117,8 @@ easily debug into it.")
 (ert-deftest triples-crud-all ()
   (triples-test-with-temp-db
     (triples-add-schema db 'named
-                        '(name :unique t))
-    (triples-add-schema db 'positioned '(position :unique t))
+                        '(name :base/unique t))
+    (triples-add-schema db 'positioned '(position :/base/unique t))
     (should-not (triples-get-subject db "foo"))
     (triples-set-subject db "foo"
                          '(named :name "bar")
@@ -131,7 +131,7 @@ easily debug into it.")
 (ert-deftest triples-set-types ()
   (triples-test-with-temp-db
     (triples-add-schema db 'named
-                       '(name :unique t)
+                        '(name :/base/unique t)
                        'alias)
     (triples-add-schema db 'reachable 'phone)
     (triples-set-type db "foo" 'named :name "Name" :alias '("alias1" "alias2"))
@@ -149,8 +149,8 @@ easily debug into it.")
 (ert-deftest triples-reversed ()
   (triples-test-with-temp-db
    (triples-add-schema db 'named
-                       '(name :unique t)
-                       '(locale :unique t))
+                       '(name :base/unique t)
+                       '(locale :base/unique t))
    (triples-add-schema db 'locale
                        '(used-in-name :base/virtual-reversed named/locale))
    (triples-set-type db "en/US" 'locale nil)
