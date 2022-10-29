@@ -16,7 +16,8 @@ easily debug into it.")
          (progn 
            (let ((db (triples-connect db-file)))
              (setq triples-test-db-file db-file)
-             ,@body))
+             ,@body
+             (triples-close db)))
        (delete-file db-file))))
 
 (defun triples-test-connect-db ()
@@ -188,14 +189,12 @@ easily debug into it.")
     (triples-add-schema db 'marker)
     (triples-set-type db "foo" 'marker)
     (should (equal '((1))
-                (emacsql db [:select (funcall count) :from triples :where (= subject $s1)
-                             :and (= predicate 'base/type) :and (= object 'marker)]
-                         "foo")))
+                   (sqlite-select db "COUNT(*) FROM triples WHERE subject = ? AND predicate = 'base/type' AND object = 'marker'"
+                                  (triples-standardize-val "foo"))))
     (triples-set-type db "foo" 'marker)
     (should (equal '((1))
-                (emacsql db [:select (funcall count) :from triples :where (= subject $s1)
-                             :and (= predicate 'base/type) :and (= object 'marker)]
-                         "foo")))))
+                   (sqlite-select db "COUNT(*) FROM triples WHERE subject = ? AND predicate = 'base/type' AND object = 'marker'"
+                                  (triples-standardize-val "foo"))))))
 
 (ert-deftest triples-readme ()
   (triples-test-with-temp-db
