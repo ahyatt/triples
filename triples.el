@@ -238,9 +238,9 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
   "Remove TYPE for SUBJECT in DB, and all associated data."
   (emacsql-with-transaction db
     (emacsql db [:delete :from triples :where (= subject $s1)
-                 :and (= predicate 'base/type)] subject)
+                 :and (= predicate 'base/type) :and (= object $s2)] subject type)
     (emacsql db [:delete :from triples :where (= subject $s1)
-                 :and (like $r2)] subject (format "%s/%%" type))))
+                 :and (like predicate $r2)] subject (format "%s/%%" type))))
 
 (defun triples-get-types (db subject)
   "From DB, get all types for SUBJECT."

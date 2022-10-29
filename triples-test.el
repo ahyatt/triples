@@ -93,6 +93,10 @@ easily debug into it.")
     (should-error (triples-verify-schema-compliant db '(("foo" named/name "bar" (:index 0)))))
     (should (triples-verify-schema-compliant db '(("foo" named/alternate-names "bar" (:index 0)))))))
 
+(defun triples-test-list-sort (list)
+  "Sort LIST in a standard way, for comparison."
+  (sort list (lambda (a b) (string< (format "%s" a) (format "%s" b)))))
+
 (defun triples-test-plist-sort (plist)
   "Sort PLIST in a standard way, for comparison."
   (kvalist->plist
@@ -104,15 +108,19 @@ easily debug into it.")
    (triples-add-schema db 'named
                        '(name :base/unique t)
                        'alias)
+   (triples-add-schema db 'callable
+                       '(phone-number :base/unique t))
    (triples-set-type db "foo" 'named :name "Name" :alias '("alias1" "alias2"))
+   (triples-set-type db "foo" 'callable :phone-number "867-5309")
    (should (equal (triples-test-plist-sort '(:name "Name" :alias ("alias1" "alias2")))
                   (triples-test-plist-sort (triples-get-type db "foo" 'named))))
-   (should (equal (triples-get-types db "foo") '(named)))
+   (should (equal (triples-test-list-sort (triples-get-types db "foo"))
+                  (triples-test-list-sort '(callable named))))
    (should-not (triples-get-type db "bar" 'named))
    (should-not (triples-get-types db "bar"))
-   (should (equal '(named) (triples-get-types db "foo")))
    (triples-remove-type db "foo" 'named)
-   (should-not (triples-get-types db "foo"))))
+   (should-not (triples-get-type db "foo" 'named))
+   (should (triples-get-type db "foo" 'callable))))
 
 (ert-deftest triples-crud-all ()
   (triples-test-with-temp-db
