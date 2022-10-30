@@ -26,6 +26,87 @@ easily debug into it.")
   (let ((sql-database triples-test-db-file))
     (sql-sqlite (format "*schema test db SQL %s*" triples-test-db-file))))
 
+(ert-deftest triples-test-insert ()
+  (triples-test-with-temp-db
+    (triples--insert db "sub" 'pred "obj")
+    ;; Test for emacsql compability
+    (should (equal (sqlite-select db "SELECT * FROM triples")
+                   '(("\"sub\"" "pred" "\"obj\"" "()"))))
+    ;; Test that it replaces - this shouldn't result in two rows.
+    (triples--insert db "sub" 'pred "obj")
+    (should (equal (sqlite-select db "SELECT count(*) FROM triples")
+                   '((1))))
+    ;; Test that colons in the predicate are stripped away when stored.
+    (triples--insert db "sub" :test/pred "obj")
+    (should (equal (sqlite-select db "SELECT count(*) FROM triples WHERE predicate = ?"
+                                  '("test/pred"))
+                   '((1))))
+    ;; Test we correctly test for bad inputs.
+    (should-error (triples--insert db "sub" "pred" "obj"))
+    (should-error (triples--insert db "sub" 'pred "obj" '(ordinary-list)))
+    (should-error (triples--insert db "sub" 'pred "obj" "string"))
+    ;; Test that we can have symbol subject and objects
+    (triples--insert db 'sub 'pred 'obj)
+    (should (equal (sqlite-select db "SELECT * FROM triples WHERE subject = ?" '("sub"))
+                   '(("sub" "pred" "obj" "()"))))))
+
+(ert-deftest triples-test-delete ()
+  (triples-test-with-temp-db
+    (triples--insert db 1 'pred 2)
+    (triples--insert db 2 'pred 1)
+    (triples--delete db 1)
+    (should (equal (sqlite-select db "SELECT count(*) FROM triples")
+                   '((1))))
+    (should (equal (sqlite-select db "SELECT count(*) FROM triples WHERE subject = ?" '(1))
+                   '((0))))
+    (triples--insert db 1 'pred 2)
+    (triples--delete db nil nil 2)
+    (should (equal (sqlite-select db "SELECT count(*) FROM triples WHERE object = ?" '(2))
+                   '((0))))
+    (triples--insert db 1 'pred 2)
+    (triples--delete db nil 'pred nil)
+    (should (equal (sqlite-select db "SELECT count(*) FROM triples")
+                   '((0))))))
+
+(ert-deftest triples-test-delete-subject-predicate-prefix ()
+  (triples-test-with-temp-db
+    (triples--insert db 1 'test/foo 2)
+    (triples--insert db 1 'bar/bar 1)
+    (triples--delete-subject-predicate-prefix db 1 'test)
+    (should (equal (sqlite-select db "SELECT count(*) FROM triples")
+                   '((1))))
+    ;; Make sure colons are stripped.
+    (triples--delete-subject-predicate-prefix db 1 :bar)
+    (should (equal (sqlite-select db "SELECT count(*) FROM triples")
+                   '((0))))))
+
+(ert-deftest triples-test-select ()
+  (triples-test-with-temp-db
+    (triples--insert db 1 'pred 2 '(:a 1))
+    (let ((expected '((1 pred 2 (:a 1)))))
+      (should (equal (triples--select db 1) expected))
+      (should (equal (triples--select db nil 'pred) expected))
+      (should (equal (triples--select db nil nil 2) expected))
+      (should (equal (triples--select db 1 nil 2) expected))
+      (should (equal (triples--select db 1 'pred 2) expected))
+      (should (equal '((1)) (triples--select db 1 nil nil nil '(subject))))
+      (should (equal '((1 pred)) (triples--select db 1 nil nil nil '(subject predicate)))))))
+
+(ert-deftest triples-test-select-with-pred-prefix ()
+  (triples-test-with-temp-db
+    (triples--insert db 'sub1 'pred/foo 'obj)
+    (triples--insert db 'sub1 'pred/bar 'obj)
+    (triples--insert db 'sub2 'pred/foo 'obj)
+    (should (equal (triples-test-list-sort (triples--select-pred-prefix db 'sub1 'pred))
+                   (triples-test-list-sort '((sub1 pred/foo obj nil)
+                                             (sub1 pred/bar obj nil)))))))
+
+(ert-deftest triples-test-select-predicate-object-fragment ()
+  (triples-test-with-temp-db
+    (triples--insert db 'sub1 'pred/foo "a whole phrase")
+    (should (equal (triples--select-predicate-object-fragment db 'pred/foo "whole")
+                   '((sub1 pred/foo "a whole phrase" nil))))))
+
 (defun triples-test-op-equals (result target)
   (and (equal (car result) (car target))
        (seq-set-equal-p (cdr result) (cdr target) #'equal)))
@@ -164,15 +245,15 @@ easily debug into it.")
 (ert-deftest triples-with-predicate ()
   (triples-test-with-temp-db
    (triples-add-schema db 'named '(name))
-   (should-not (triples-with-predicate db :named/name))
+   (should-not (triples-with-predicate db 'named/name))
    (triples-set-type db "foo" 'named :name "My Name Is Fred Foo")
    (triples-set-type db "bar" 'named :name "My Name Is Betty Bar")
    (should (equal
-            '(("bar" named/name "My Name Is Betty Bar" (:empty t))
-              ("foo" named/name "My Name Is Fred Foo" (:empty t)))
-            (sort (triples-with-predicate db :named/name)
-                  (lambda (a b)
-                    (string< (car a) (car b))))))))
+            (triples-test-list-sort 
+             '(("bar" named/name "My Name Is Betty Bar" nil)
+               ("foo" named/name "My Name Is Fred Foo" nil)))
+            (triples-test-list-sort
+             (triples-with-predicate db 'named/name))))))
 
 (ert-deftest triples-subjects-of-type ()
   (triples-test-with-temp-db
@@ -189,12 +270,12 @@ easily debug into it.")
     (triples-add-schema db 'marker)
     (triples-set-type db "foo" 'marker)
     (should (equal '((1))
-                   (sqlite-select db "COUNT(*) FROM triples WHERE subject = ? AND predicate = 'base/type' AND object = 'marker'"
-                                  (triples-standardize-val "foo"))))
+                   (sqlite-select db "SELECT COUNT(*) FROM triples WHERE subject = ? AND predicate = 'base/type' AND object = 'marker'"
+                                  (list (triples-standardize-val "foo")))))
     (triples-set-type db "foo" 'marker)
     (should (equal '((1))
-                   (sqlite-select db "COUNT(*) FROM triples WHERE subject = ? AND predicate = 'base/type' AND object = 'marker'"
-                                  (triples-standardize-val "foo"))))))
+                   (sqlite-select db "SELECT COUNT(*) FROM triples WHERE subject = ? AND predicate = 'base/type' AND object = 'marker'"
+                                  (list (triples-standardize-val "foo")))))))
 
 (ert-deftest triples-readme ()
   (triples-test-with-temp-db

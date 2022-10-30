@@ -28,31 +28,23 @@
 
 (require 'cl-macs)
 (require 'seq)
+(require 'subr-x)
 
 ;;; Code:
 
 (defun triples-connect (file)
   "Connect to the database FILE and make sure it is populated."
   (let* ((db (sqlite-open file)))
-    (sqlite-execute db "CREATE TABLE IF NOT EXISTS triples(subject TEXT NOT NULL, predicate TEXT NOT NULL, object TEXT, PROPERTIES TEXT NOT NULL)")
+    (sqlite-execute db "CREATE TABLE IF NOT EXISTS triples(subject TEXT NOT NULL, predicate TEXT NOT NULL, object TEXT, properties TEXT NOT NULL)")
     (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_idx ON triples (subject)")
     (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_predicate_idx ON triples (subject, predicate)")
     (sqlite-execute db "CREATE INDEX IF NOT EXISTS predicate_object_idx ON triples (predicate, object)")
-    (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_predicate_object_properties_idx ON triples (subject, predicate, object, properties)")
+    (sqlite-execute db "CREATE UNIQUE INDEX IF NOT EXISTS subject_predicate_object_properties_idx ON triples (subject, predicate, object, properties)")
     db))
 
 (defun triples-close (db)
   "Close sqlite database DB."
   (sqlite-close db))
-
-(defun triples--ensure-property-val (vec)
-  "Return a VEC has 4 elements.
-We add a bogus value as a property because we want to be able
-to enforce unique constraints, which sqlite will not do will NULL
-values."
-  (if (= (length vec) 4)
-      vec
-    (vconcat vec '((:empty t)))))
 
 (defun triples--subjects (triples)
   "Return all unique subjects in TRIPLES."
@@ -79,10 +71,108 @@ values."
 (defun triples-standardize-val (val)
   "If VAL is a string, return it as enclosed in quotes
 This is done to have compatibility with the way emacsql stores
-values."
-  (if (stringp val)
-      (format "\"%s\"" val)
-    val))
+values. Turn a symbol into a string as well, but not a quoted
+one, because sqlite cannot handle symbols."
+  (if val
+      (pcase (type-of val)
+        ('string (format "\"%s\"" val))
+        ('symbol (format "%s" val))
+        ('cons (format "%s" val))
+        (_ val))
+    ;; Just to save a bit of space, let's use "()" instead of "null", which is
+    ;; what it would be turned into by the pcase above.
+    "()"))
+
+(defun triples-standardize-result (result)
+  "Return RESULT in standardized form.
+This imitates the way emacsql returns items, with strings
+becoming either symbols, lists, or strings depending on whether
+the string itself is wrapped in quotes."
+  (if (and (string-prefix-p "\"" result)
+           (string-suffix-p "\"" result))
+      (string-remove-suffix "\"" (string-remove-prefix "\"" result))
+    (read result)))
+
+(defun triples--insert (db subject predicate object &optional properties)
+  "Insert triple to DB: SUBJECT, PREDICATE, OBJECT with PROPERTIES.
+This is a SQL replace operation, because we don't want any
+duplicates; if the triple is the same, it has to differ at least
+with PROPERTIES. This is a low-level function that bypasses our
+normal schema checks, so should not be called from client programs."
+  (unless (symbolp predicate)
+    (error "Predicates in triples must always be symbols"))
+  (unless (plistp properties)
+    (error "Properties stored must always be plists"))
+  (sqlite-execute db "REPLACE INTO TRIPLES VALUES (?, ?, ?, ?)"
+                  (list (triples-standardize-val subject)
+                        (triples-standardize-val (triples--decolon predicate))
+                        (triples-standardize-val object)
+                        ;; Properties cannot be null, since in sqlite each null value
+                        ;; is distinct from each other, so replace would not replace
+                        ;; duplicate triples each with null properties.
+                        (triples-standardize-val properties))))
+
+(defun triples--delete (db &optional subject predicate object properties)
+  "Delete triples matching SUBJECT, PREDICATE, OBJECT, PROPERTIES.
+If any of these are nil, they will not selected for. If you set
+all to nil, everything will be deleted, so be careful!"
+  (sqlite-execute
+   db
+   (concat "DELETE FROM TRIPLES"
+           (when (or subject predicate object properties)
+             (concat " WHERE "
+                     (string-join
+                      (seq-filter #'identity
+                                  (list (when subject "SUBJECT = ?")
+                                        (when predicate "PREDICATE = ?")
+                                        (when object "OBJECT = ?")
+                                        (when properties "PROPERTIES = ?")))
+                      " AND "))))
+   (mapcar #'triples-standardize-val (seq-filter #'identity (list subject predicate object properties)))))
+
+(defun triples--delete-subject-predicate-prefix (db subject pred-prefix)
+  "Delete triples matching SUBJECT and predicates with PRED-PREFIX."
+  (unless (symbolp pred-prefix)
+    (error "Predicates in triples must always be symbols"))
+  (sqlite-execute db "DELETE FROM TRIPLES WHERE subject = ? AND predicate LIKE ?"
+                  (list (triples-standardize-val subject)
+                        (format "%s/%%" (triples--decolon pred-prefix)))))
+
+(defun triples--select-pred-prefix (db subject pred-prefix)
+  "Return rows matching SUBJECT and PRED-PREFIX."
+  (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
+          (sqlite-select db "SELECT * FROM triples WHERE subject = ? AND predicate LIKE ?"
+                         (list (triples-standardize-val subject)
+                               (format "%s/%%" pred-prefix)))))
+
+(defun triples--select-predicate-object-fragment (db predicate object-fragment)
+  "Return rows with PREDICATE and with OBJECT-FRAGMENT in object."
+  (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
+          (sqlite-select db "SELECT * from triples WHERE predicate = ? AND object LIKE ?"
+                         (list (triples-standardize-val predicate)
+                               (format "%%%s%%" object-fragment)))))
+
+(defun triples--select (db &optional subject predicate object properties selector)
+  "Return rows matching SUBJECT, PREDICATE, OBJECT, PROPERTIES.
+If any of these are nil, they are not included in the select
+statement. The SELECTOR is list of symbols subject, precicate,
+object, properties to retrieve or nil for *."
+  (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
+          (sqlite-select db
+                         (concat "SELECT "
+                                 (if selector
+                                     (mapconcat (lambda (e) (format "%s" e)) selector ", ")
+                                   "*") " FROM triples"
+                                   (when (or subject predicate object properties)
+                                     (concat " WHERE "
+                                             (string-join
+                                              (seq-filter #'identity
+                                                          (list (when subject "SUBJECT = ?")
+                                                                (when predicate "PREDICATE = ?")
+                                                                (when object "OBJECT = ?")
+                                                                (when properties "PROPERTIES = ?")))
+                                              " AND "))))
+                         (mapcar #'triples-standardize-val (seq-filter #'identity (list subject predicate object properties))))))
 
 (defun triples--add (db op)
   "Perform OP on DB."
@@ -90,48 +180,39 @@ values."
       ('replace-subject
        (mapc
         (lambda (sub)
-          (sqlite-execute db "DELETE FROM TRIPLES WHERE subject = ?"
-                          (list (triples-standardize-val sub))))
+          (triples--delete db sub))
         (triples--subjects (cdr op))))
       ('replace-subject-type
        (mapc (lambda (sub-triples)
                (mapc (lambda (type)
                        ;; We have to ignore base, which keeps type information in general.
                        (unless (eq type 'base)
-                         (sqlite-execute db "DELETE FROM TRIPLES WHERE SUBJECT = ? AND PREDICATE LIKE ?"
-                                         (list (triples-standardize-val (car sub-triples))
-                                               (format "%s/%%" type)))))
+                         (triples--delete-subject-predicate-prefix db (car sub-triples) type)))
                      (seq-uniq
                       (mapcar #'car (mapcar #'triples-combined-to-type-and-prop
                                                      (mapcar #'cl-second (cdr sub-triples)))))))
              (triples--group-by-subjects (cdr op)))))
   (mapc (lambda (triple)
-          (sqlite-execute db "REPLACE INTO TRIPLES VALUES (?, ?, ?, ?)"
-                          (triples--ensure-property-val
-                           (apply #'vector (mapcar #'triples-standardize-val triple)))))
+          (apply #'triples--insert db triple))
           (cdr op)))
 
 (defun triples-properties-for-predicate (db cpred)
   "Return the properties in DB for combined predicate CPRED as a plist."
   (mapcan (lambda (row)
             (list (intern (format ":%s" (nth 1 row))) (nth 2 row)))
-          (sqlite-select db "SELECT * FROM TRIPLES WHERE subject = ?"
-                         (list (triples-standardize-val cpred)))))
+          (triples--select db cpred)))
 
 (defun triples-predicates-for-type (db type)
   "Return all predicates defined for TYPE in DB."
   (mapcar #'car
-          (sqlite-select db "SELECT object FROM triples WHERE subject = ? AND predicate = 'schema/property'"
-                         (list (triples-standardize-val type)))))
+          (triples--select db type 'schema/property nil nil '(object))))
 
 (defun triples-verify-schema-compliant (db triples)
   "Error if TRIPLES is not compliant with schema in DB."
   (mapc (lambda (triple)
           (pcase-let ((`(,type . ,prop) (triples-combined-to-type-and-prop (nth 1 triple))))
             (unless (or (eq type 'base)
-                        (sqlite-select db "SELECT * FROM triples WHERE subject = ? AND predicate = 'schema/property'
-AND object = ?"
-                                       (list (triples-standardize-val type) (triples-standardize-val prop))))
+                        (triples--select db type 'schema/property prop nil))
               (error "Property %s not found in schema" (nth 1 triple)))))
         triples)
   (mapc (lambda (triple)
@@ -180,13 +261,13 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
 The transaction will abort if an error is thrown."
   (declare (indent 0) (debug t))
   (let ((db-var (gensym "db")))
-    `(condition-case
-         (let ((,db-var ,db))
+    `(let ((,db-var ,db))
+       (condition-case nil
            (progn
              (sqlite-transaction ,db-var)
              ,@body
-             (sqlite-commit ,db-var)))
-         (error (sqlite-rollback ,db-var)))))
+             (sqlite-commit ,db-var))  
+         (error (sqlite-rollback ,db-var))))))
 
 (defun triples-set-types (db subject &rest combined-props)
   "Set all data for types in COMBINED-PROPS in DB for SUBJECT.
@@ -201,7 +282,8 @@ given in the COMBINED-PROPS will be removed."
                   (plist-put (gethash (triples--decolon type) type-to-plist)
                              (triples--encolon prop) val) type-to-plist)))
      combined-props)
-    (triples-with-transaction db
+    (triples-with-transaction
+      db
       (cl-loop for k being the hash-keys of type-to-plist using (hash-values v)
                do (apply #'triples-set-type db subject k v)))))
 
@@ -230,9 +312,7 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
                      (cons (cons (nth 2 db-triple) (nth 3 db-triple))
                            (gethash (nth 1 db-triple) preds))
                      preds))
-          (sqlite-select db "SELECT * FROM triples WHERE subject = ? AND predicate LIKE ?"
-                         (list (triples-standardize-val subject)
-                               (format "%s/%%" type))))
+          (triples--select-pred-prefix db subject type))
     (append
      (cl-loop for k being the hash-keys of preds using (hash-values v)
               nconc (list (triples--encolon (cdr (triples-combined-to-type-and-prop k)))
@@ -250,26 +330,20 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
                                     :base/virtual-reversed)))
                 (when reversed-prop
                   (let ((result
-                         (sqlite-select db "SELECT subject FROM triples WHERE object = ? AND predicate = ?"
-                                        (triples-standardize-val (subject))
-                                        reversed-prop)))
+                         (triples--select db nil reversed-prop subject nil '(subject))))
                     (when result (cons (triples--encolon pred) (list (mapcar #'car result)))))))))))
 
 (defun triples-remove-type (db subject type)
   "Remove TYPE for SUBJECT in DB, and all associated data."
   (triples-with-transaction
     db
-    (sqlite-execute db "DELETE FROM TRIPLES WHERE subject = ? AND PREDICATE = 'base/type' AND object = ?"
-                    (list (triples-standardize-val subject) type))
-    (sqlite-execute db "DELETE FROM TRIPLES WHERE subject = ? AND PREDICATE LIKE ?"
-                    (list (triples-standardize-val subject)
-                          (format "%s/%%" type)))))
+    (triples--delete db subject 'base/type type)
+    (triples--delete-subject-predicate-prefix db subject type)))
 
 (defun triples-get-types (db subject)
   "From DB, get all types for SUBJECT."
   (mapcar #'car
-          (sqlite-select db "SELECT object FROM triples WHERE subject = ? AND predicate = 'base/type'"
-                         (list (triples-standardize-val subject)))))
+          (triples--select db subject 'base/type nil nil '(object))))
 
 (defun triples-get-subject (db subject)
   "From DB return all properties for SUBJECT as a single plist."
@@ -291,25 +365,19 @@ TYPE-VALS-CONS is a list of conses, combining a type and a plist of values."
 
 (defun triples-delete-subject (db subject)
   "Delete all data in DB associated with SUBJECT."
-  (sqlite-execute db "DELETE FROM triples WHERE SUBJECT = ?"
-                  (list (triples-standardize-val subject))))
+  (triples--delete db subject))
 
 (defun triples-search (db cpred text)
   "Search DB for instances of combined property CPRED with TEXT."
-  (sqlite-select db "SELECT * FROM triples WHERE predicate = ? AND object LIKE ?"
-                 (list (triples--decolon cpred)
-                       (format "%%%s%%" text))))
+  (triples--select-predicate-object-fragment db cpred text))
 
 (defun triples-with-predicate (db cpred)
   "Return all triples in DB with CPRED as its combined predicate."
-  (sqlite-select db "SELECT * FROM triples WHERE predicate = ?"
-                 (list (triples--decolon cpred))))
+  (triples--select db nil cpred))
 
 (defun triples-subjects-with-predicate-object (db cpred obj)
   "Return all subjects in DB with CPRED equal to OBJ."
-  (sqlite-select db "SELECT subject FROM triples WHERE predicate = ? AND object = ?"
-                 (list (triples--decolon cpred)
-                       (triples-standardize-val obj))))
+  (triples--select db nil cpred obj))
 
 (defun triples-subjects-of-type (db type)
   "Return a list of all subjects with a particular TYPE in DB."
