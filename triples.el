@@ -116,10 +116,13 @@ one, because sqlite cannot handle symbols."
 This imitates the way emacsql returns items, with strings
 becoming either symbols, lists, or strings depending on whether
 the string itself is wrapped in quotes."
-  (if (and (string-prefix-p "\"" result)
+  (if (and (stringp result)
+           (string-prefix-p "\"" result)
            (string-suffix-p "\"" result))
       (string-remove-suffix "\"" (string-remove-prefix "\"" result))
-    (read result)))
+    (if (numberp result)
+        result
+      (read result))))
 
 (defun triples--insert (db subject predicate object &optional properties)
   "Insert triple to DB: SUBJECT, PREDICATE, OBJECT with PROPERTIES.
