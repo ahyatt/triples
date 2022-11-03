@@ -1,7 +1,10 @@
 ;;; triples-test.el --- Tests for triples module.  -*- lexical-binding: t; -*-
+;; Note: It's important to test this on emacs 29, with emacsql installed, so we
+;; can make both types of sqlite backend work.
 (require 'triples)
 (require 'seq)
 (require 'kv)
+(require 'emacsql)
 
 ;;; Code:
 
@@ -26,86 +29,127 @@ easily debug into it.")
   (let ((sql-database triples-test-db-file))
     (sql-sqlite (format "*schema test db SQL %s*" triples-test-db-file))))
 
-(ert-deftest triples-test-insert ()
-  (triples-test-with-temp-db
-    (triples--insert db "sub" 'pred "obj")
-    ;; Test for emacsql compability
-    (should (equal (sqlite-select db "SELECT * FROM triples")
-                   '(("\"sub\"" "pred" "\"obj\"" "()"))))
-    ;; Test that it replaces - this shouldn't result in two rows.
-    (triples--insert db "sub" 'pred "obj")
-    (should (equal (sqlite-select db "SELECT count(*) FROM triples")
-                   '((1))))
-    ;; Test that colons in the predicate are stripped away when stored.
-    (triples--insert db "sub" :test/pred "obj")
-    (should (equal (sqlite-select db "SELECT count(*) FROM triples WHERE predicate = ?"
-                                  '("test/pred"))
-                   '((1))))
-    ;; Test we correctly test for bad inputs.
-    (should-error (triples--insert db "sub" "pred" "obj"))
-    (should-error (triples--insert db "sub" 'pred "obj" '(ordinary-list)))
-    (should-error (triples--insert db "sub" 'pred "obj" "string"))
-    ;; Test that we can have symbol subject and objects
-    (triples--insert db 'sub 'pred 'obj)
-    (should (equal (sqlite-select db "SELECT * FROM triples WHERE subject = ?" '("sub"))
-                   '(("sub" "pred" "obj" "()"))))))
+(defun triples-test-insert (mode)
+  (let ((triples--sqlite-interface mode))
+    (triples-test-with-temp-db
+      (triples--insert db "sub" 'pred "obj")
+      (should (equal (triples--select db)
+                     '(("sub" pred "obj" nil))))
+      ;; Test that we actually are storing with builtin something compatible
+      ;; with emacsql.
+      (when (eq mode 'builtin)
+        (should (equal (sqlite-select db "SELECT * FROM triples")
+                       '(("\"sub\"" "pred" "\"obj\"" "()")))))
+      ;; Test that it replaces - this shouldn't result in two rows.
+      (triples--insert db "sub" 'pred "obj")
+      (should (= (length (triples--select db)) 1))
+      ;; Test that colons in the predicate are stripped away when stored.
+      (triples--insert db "sub" :test/pred "obj")
+      (should (= (length (triples--select db nil 'test/pred)) 1))
+      ;; Test we correctly test for bad inputs.
+      (should-error (triples--insert db "sub" "pred" "obj"))
+      (should-error (triples--insert db "sub" 'pred "obj" '(ordinary-list)))
+      (should-error (triples--insert db "sub" 'pred "obj" "string"))
+      ;; Test that we can have symbol subject and objects
+      (triples--insert db 'sub 'pred 'obj)
+      (should (equal
+               (triples--select db 'sub)
+               '((sub pred obj nil)))))))
 
-(ert-deftest triples-test-delete ()
-  (triples-test-with-temp-db
-    (triples--insert db 1 'pred 2)
-    (triples--insert db 2 'pred 1)
-    (triples--delete db 1)
-    (should (equal (sqlite-select db "SELECT count(*) FROM triples")
-                   '((1))))
-    (should (equal (sqlite-select db "SELECT count(*) FROM triples WHERE subject = ?" '(1))
-                   '((0))))
-    (triples--insert db 1 'pred 2)
-    (triples--delete db nil nil 2)
-    (should (equal (sqlite-select db "SELECT count(*) FROM triples WHERE object = ?" '(2))
-                   '((0))))
-    (triples--insert db 1 'pred 2)
-    (triples--delete db nil 'pred nil)
-    (should (equal (sqlite-select db "SELECT count(*) FROM triples")
-                   '((0))))))
+(ert-deftest triples-test-insert-builtin ()
+  (triples-test-insert 'builtin))
 
-(ert-deftest triples-test-delete-subject-predicate-prefix ()
-  (triples-test-with-temp-db
-    (triples--insert db 1 'test/foo 2)
-    (triples--insert db 1 'bar/bar 1)
-    (triples--delete-subject-predicate-prefix db 1 'test)
-    (should (equal (sqlite-select db "SELECT count(*) FROM triples")
-                   '((1))))
-    ;; Make sure colons are stripped.
-    (triples--delete-subject-predicate-prefix db 1 :bar)
-    (should (equal (sqlite-select db "SELECT count(*) FROM triples")
-                   '((0))))))
+(ert-deftest triples-test-insert-emacsql ()
+  (triples-test-insert 'emacsql))
 
-(ert-deftest triples-test-select ()
-  (triples-test-with-temp-db
-    (triples--insert db 1 'pred 2 '(:a 1))
-    (let ((expected '((1 pred 2 (:a 1)))))
-      (should (equal (triples--select db 1) expected))
-      (should (equal (triples--select db nil 'pred) expected))
-      (should (equal (triples--select db nil nil 2) expected))
-      (should (equal (triples--select db 1 nil 2) expected))
-      (should (equal (triples--select db 1 'pred 2) expected))
-      (should (equal '((1)) (triples--select db 1 nil nil nil '(subject))))
-      (should (equal '((1 pred)) (triples--select db 1 nil nil nil '(subject predicate)))))))
+(defun triples-test-delete (mode)
+  (let ((triples--sqlite-interface mode))
+    (triples-test-with-temp-db
+     (triples--insert db 1 'pred 2)
+     (triples--insert db 2 'pred 1)
+     (triples--delete db 1)
+     (should (= 1 (length (triples--select db))))
+     (should (= 0 (length (triples--select db 1))))
+     (triples--insert db 1 'pred 2)
+     (triples--delete db nil nil 2)
+     (should (= 0 (length (triples--select db nil nil 2))))
+     (triples--insert db 1 'pred 2)
+     (triples--delete db nil 'pred nil)
+     (should (= 0 (length (triples--select db)))))))
 
-(ert-deftest triples-test-select-with-pred-prefix ()
-  (triples-test-with-temp-db
-    (triples--insert db 'sub1 'pred/foo 'obj)
-    (triples--insert db 'sub1 'pred/bar 'obj)
-    (triples--insert db 'sub2 'pred/foo 'obj)
-    (should (equal (triples-test-list-sort (triples--select-pred-prefix db 'sub1 'pred))
-                   (triples-test-list-sort '((sub1 pred/foo obj nil)
-                                             (sub1 pred/bar obj nil)))))))
+(ert-deftest triples-test-delete-builtin ()
+  (triples-test-delete 'builtin))
 
-(ert-deftest triples-test-select-predicate-object-fragment ()
-  (triples-test-with-temp-db
-    (triples--insert db 'sub1 'pred/foo "a whole phrase")
-    (should (equal (triples--select-predicate-object-fragment db 'pred/foo "whole")
-                   '((sub1 pred/foo "a whole phrase" nil))))))
+(ert-deftest triples-test-delete-emacsql ()
+  (triples-test-delete 'emacsql))
+
+(defun triples-test-delete-subject-predicate-prefix (mode)
+  (let ((triples--sqlite-interface mode))
+    (triples-test-with-temp-db
+     (triples--insert db 1 'test/foo 2)
+     (triples--insert db 1 'bar/bar 1)
+     (triples--delete-subject-predicate-prefix db 1 'test)
+     (should (= 1 (length (triples--select db))))
+     ;; Make sure colons are stripped.
+     (triples--delete-subject-predicate-prefix db 1 :bar)
+     (should (= 0 (length (triples--select db)))))))
+
+(ert-deftest triples-test-delete-subject-predicate-prefix-builtin ()
+  (triples-test-delete-subject-predicate-prefix 'builtin))
+
+(ert-deftest triples-test-delete-subject-predicate-prefix-emacsql ()
+  (triples-test-delete-subject-predicate-prefix 'emacsql))
+
+(defun triples-test-select (mode)
+  (let ((triples--sqlite-interface mode))
+    (triples-test-with-temp-db
+     (triples--insert db 1 'pred 2 '(:a 1))
+     (let ((expected '((1 pred 2 (:a 1)))))
+       (should (equal (triples--select db 1) expected))
+       (should (equal (triples--select db nil 'pred) expected))
+       (should (equal (triples--select db nil nil 2) expected))
+       (should (equal (triples--select db 1 nil 2) expected))
+       (should (equal (triples--select db 1 'pred 2) expected))
+       (should (equal '((1)) (triples--select db 1 nil nil nil '(subject))))
+       (should (equal '((1 pred)) (triples--select db 1 nil nil nil '(subject predicate))))))))
+
+(ert-deftest triples-test-select-builtin ()
+  (triples-test-select 'builtin))
+
+(ert-deftest triples-test-select-emacsql ()
+  (triples-test-select 'emacsql))
+
+(defun triples-test-select-with-pred-prefix (mode)
+  (let ((triples--sqlite-interface mode))
+    (triples-test-with-temp-db
+     (triples--insert db 'sub1 'pred/foo 'obj)
+     (triples--insert db 'sub1 'pred/bar 'obj)
+     (triples--insert db 'sub2 'pred/foo 'obj)
+     (should (equal (triples-test-list-sort (triples--select-pred-prefix db 'sub1 'pred))
+                    (triples-test-list-sort '((sub1 pred/foo obj nil)
+                                              (sub1 pred/bar obj nil))))))))
+
+(ert-deftest triples-test-select-with-pred-prefix-builtin ()
+  (triples-test-select 'builtin))
+
+(ert-deftest triples-test-select-with-pred-prefix-emacsql ()
+  (triples-test-select 'emacsql))
+
+(defun triples-test-select-predicate-object-fragment (mode)
+  (let ((triples--sqlite-interface mode))
+    (triples-test-with-temp-db
+     (triples--insert db 'sub1 'pred/foo "a whole phrase")
+     (should (equal (triples--select-predicate-object-fragment db 'pred/foo "whole")
+                    '((sub1 pred/foo "a whole phrase" nil)))))))
+
+(ert-deftest triples-test-select-predicate-object-fragment-builtin ()
+  (triples-test-select-predicate-object-fragment 'builtin))
+
+(ert-deftest triples-test-select-predicate-object-fragment-emacsql ()
+  (triples-test-select-predicate-object-fragment 'emacsql))
+
+;; After this we don't bother testing both with emacsql and the builtin sqlite,
+;; since if the functions tested above work, it should also work for both.
 
 (defun triples-test-op-equals (result target)
   (and (equal (car result) (car target))
