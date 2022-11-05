@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/triples
-;; Package-Requires: ((seq "2.0"))
+;; Package-Requires: ((seq "2.0") (emacs "25"))
 ;; Keywords: triples, kg, data, sqlite
 ;; Version: 0.0
 ;; This program is free software; you can redistribute it and/or
@@ -29,34 +29,31 @@
 ;; This package requires either emacs 29 or the emacsql package to be installed.
 
 
-(require 'cl-macs)
+(require 'cl-lib)
+(require 'package)
 (require 'seq)
 (require 'subr-x)
 
 ;;; Code:
 
-(defvar triples-sqlite-interface 'builtin
+(defvar triples-sqlite-interface
+  (if (and (fboundp 'sqlite-available-p) (sqlite-available-p))
+      'builtin
+    'emacsql)
   "The interface to sqlite to use.
-Either `builtin' or `emacsql'. This only is used when the version
-is emacs 29 or greater (when builtin is available) and emacsql
-package is installed, otherwise triples will just use what is
-available.")
-
-(defun triples--sqlite-interface ()
-  "Return the sqlite interface to use.
-See the `triples-sqlite-interface' variable for more information.
-This will return either `builtin' or `emacsql'."
-  (if (and (>= emacs-major-version 29)
-           (featurep 'emacsql))
-      triples-sqlite-interface
-    (if (>= emacs-major-version 29) 'builtin 'emacsql)))
+Either `builtin' or `emacsql'. Defaults to builtin when
+available. Builtin is available when the version is Emacs 29 or
+greater, and emacsql is usable when the `emacsql' package is
+installed.")
 
 (defun triples-connect (file)
   "Connect to the database FILE and make sure it is populated."
-  (unless (or (>= emacs-major-version 29)
-              (featurep 'emacsql))
-    (error "The triples package requires either emacs 29 or the emacsql package to be installed."))
-  (pcase (triples--sqlite-interface)
+  (unless (pcase-exhaustive triples-sqlite-interface
+              ('builtin
+               (and (fboundp 'sqlite-available-p) (sqlite-available-p)))
+              ('emacsql (require 'emacsql nil t)))
+    (error "The triples package requires either Emacs 29 or the emacsql package to be installed."))
+  (pcase triples-sqlite-interface
     ('builtin (let* ((db (sqlite-open file)))
                 (sqlite-execute db "CREATE TABLE IF NOT EXISTS triples(subject TEXT NOT NULL, predicate TEXT NOT NULL, object TEXT, properties TEXT NOT NULL)")
                 (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_idx ON triples (subject)")
@@ -84,7 +81,7 @@ This will return either `builtin' or `emacsql'."
 
 (defun triples-close (db)
   "Close sqlite database DB."
-  (pcase (triples--sqlite-interface)
+  (pcase triples-sqlite-interface
     ('builtin (sqlite-close db))
     ('emacsql (emacsql-close db))))
 
@@ -101,15 +98,12 @@ This will return either `builtin' or `emacsql'."
 This is done to have compatibility with the way emacsql stores
 values. Turn a symbol into a string as well, but not a quoted
 one, because sqlite cannot handle symbols."
-  (if val
-      (pcase (type-of val)
-        ('string (format "\"%s\"" val))
-        ('symbol (format "%s" val))
-        ('cons (format "%s" val))
-        (_ val))
-    ;; Just to save a bit of space, let's use "()" instead of "null", which is
-    ;; what it would be turned into by the pcase above.
-    "()"))
+  (let ((print-escape-control-characters t))
+    (if val
+        (format "%S" val)
+      ;; Just to save a bit of space, let's use "()" instead of "null", which is
+      ;; what it would be turned into by the pcase above.
+      "()")))
 
 (defun triples-standardize-result (result)
   "Return RESULT in standardized form.
@@ -134,7 +128,7 @@ normal schema checks, so should not be called from client programs."
     (error "Predicates in triples must always be symbols"))
   (unless (plistp properties)
     (error "Properties stored must always be plists"))
-  (pcase (triples--sqlite-interface)
+  (pcase triples-sqlite-interface
     ('builtin 
      (sqlite-execute db "REPLACE INTO triples VALUES (?, ?, ?, ?)"
                      (list (triples-standardize-val subject)
@@ -166,7 +160,7 @@ elements, but it shouldn't matter."
   "Delete triples matching SUBJECT, PREDICATE, OBJECT, PROPERTIES.
 If any of these are nil, they will not selected for. If you set
 all to nil, everything will be deleted, so be careful!"
-  (pcase (triples--sqlite-interface)
+  (pcase triples-sqlite-interface
     ('builtin (sqlite-execute
                db
                (concat "DELETE FROM triples"
@@ -197,7 +191,7 @@ all to nil, everything will be deleted, so be careful!"
   "Delete triples matching SUBJECT and predicates with PRED-PREFIX."
   (unless (symbolp pred-prefix)
     (error "Predicates in triples must always be symbols"))
-  (pcase (triples--sqlite-interface)
+  (pcase triples-sqlite-interface
     ('builtin (sqlite-execute db "DELETE FROM triples WHERE subject = ? AND predicate LIKE ?"
                   (list (triples-standardize-val subject)
                         (format "%s/%%" (triples--decolon pred-prefix)))))
@@ -206,7 +200,7 @@ all to nil, everything will be deleted, so be careful!"
 
 (defun triples--select-pred-prefix (db subject pred-prefix)
   "Return rows matching SUBJECT and PRED-PREFIX."
-  (pcase (triples--sqlite-interface)
+  (pcase triples-sqlite-interface
     ('builtin (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
           (sqlite-select db "SELECT * FROM triples WHERE subject = ? AND predicate LIKE ?"
                          (list (triples-standardize-val subject)
@@ -216,7 +210,7 @@ all to nil, everything will be deleted, so be careful!"
 
 (defun triples--select-predicate-object-fragment (db predicate object-fragment)
   "Return rows with PREDICATE and with OBJECT-FRAGMENT in object."
-  (pcase (triples--sqlite-interface)
+  (pcase triples-sqlite-interface
     ('builtin (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
                       (sqlite-select db "SELECT * from triples WHERE predicate = ? AND object LIKE ?"
                                      (list (triples-standardize-val predicate)
@@ -229,7 +223,7 @@ all to nil, everything will be deleted, so be careful!"
 If any of these are nil, they are not included in the select
 statement. The SELECTOR is list of symbols subject, precicate,
 object, properties to retrieve or nil for *."
-  (pcase (triples--sqlite-interface)
+  (pcase triples-sqlite-interface
     ('builtin (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
                       (sqlite-select db
                                      (concat "SELECT "

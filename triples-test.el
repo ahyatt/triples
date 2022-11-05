@@ -4,7 +4,7 @@
 (require 'triples)
 (require 'seq)
 (require 'kv)
-(require 'emacsql)
+(require 'emacsql nil t)
 
 ;;; Code:
 
@@ -57,9 +57,11 @@ easily debug into it.")
                '((sub pred obj nil)))))))
 
 (ert-deftest triples-test-insert-builtin ()
+  (skip-unless (and (fboundp 'sqlite-available-p) (sqlite-available-p)))
   (triples-test-insert 'builtin))
 
 (ert-deftest triples-test-insert-emacsql ()
+  (skip-unless (featurep 'emacsql))
   (triples-test-insert 'emacsql))
 
 (defun triples-test-delete (mode)
@@ -78,9 +80,11 @@ easily debug into it.")
      (should (= 0 (length (triples--select db)))))))
 
 (ert-deftest triples-test-delete-builtin ()
+  (skip-unless (and (fboundp 'sqlite-available-p) (sqlite-available-p)))
   (triples-test-delete 'builtin))
 
 (ert-deftest triples-test-delete-emacsql ()
+  (skip-unless (featurep 'emacsql))
   (triples-test-delete 'emacsql))
 
 (defun triples-test-delete-subject-predicate-prefix (mode)
@@ -95,9 +99,11 @@ easily debug into it.")
      (should (= 0 (length (triples--select db)))))))
 
 (ert-deftest triples-test-delete-subject-predicate-prefix-builtin ()
+  (skip-unless (and (fboundp 'sqlite-available-p) (sqlite-available-p)))
   (triples-test-delete-subject-predicate-prefix 'builtin))
 
 (ert-deftest triples-test-delete-subject-predicate-prefix-emacsql ()
+  (skip-unless (featurep 'emacsql))
   (triples-test-delete-subject-predicate-prefix 'emacsql))
 
 (defun triples-test-select (mode)
@@ -114,9 +120,11 @@ easily debug into it.")
        (should (equal '((1 pred)) (triples--select db 1 nil nil nil '(subject predicate))))))))
 
 (ert-deftest triples-test-select-builtin ()
+  (skip-unless (and (fboundp 'sqlite-available-p) (sqlite-available-p)))
   (triples-test-select 'builtin))
 
 (ert-deftest triples-test-select-emacsql ()
+  (skip-unless (featurep 'emacsql))
   (triples-test-select 'emacsql))
 
 (defun triples-test-select-with-pred-prefix (mode)
@@ -130,9 +138,11 @@ easily debug into it.")
                                               (sub1 pred/bar obj nil))))))))
 
 (ert-deftest triples-test-select-with-pred-prefix-builtin ()
+  (skip-unless (and (fboundp 'sqlite-available-p) (sqlite-available-p)))
   (triples-test-select 'builtin))
 
 (ert-deftest triples-test-select-with-pred-prefix-emacsql ()
+  (skip-unless (featurep 'emacsql))
   (triples-test-select 'emacsql))
 
 (defun triples-test-select-predicate-object-fragment (mode)
@@ -143,9 +153,11 @@ easily debug into it.")
                     '((sub1 pred/foo "a whole phrase" nil)))))))
 
 (ert-deftest triples-test-select-predicate-object-fragment-builtin ()
+  (skip-unless (and (fboundp 'sqlite-available-p) (sqlite-available-p)))
   (triples-test-select-predicate-object-fragment 'builtin))
 
 (ert-deftest triples-test-select-predicate-object-fragment-emacsql ()
+  (skip-unless (featurep 'emacsql))
   (triples-test-select-predicate-object-fragment 'emacsql))
 
 ;; After this we don't bother testing both with emacsql and the builtin sqlite,
