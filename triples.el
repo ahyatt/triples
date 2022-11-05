@@ -4,7 +4,7 @@
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/triples
-;; Package-Requires: ((emacsql "3.0.0") cl-lib (seq "2.0"))
+;; Package-Requires: ((seq "2.0") (emacs "25"))
 ;; Keywords: triples, kg, data, sqlite
 ;; Version: 0.0
 ;; This program is free software; you can redistribute it and/or
@@ -25,39 +25,248 @@
 ;; triples: subject, predicate, objects, plus some extra metadata. This data
 ;; structure provides a way to store data according to an extensible schema, and
 ;; provide an API offering two-way links between all information stored.
+;;
+;; This package requires either emacs 29 or the emacsql package to be installed.
 
-(require 'cl-macs)
-(require 'emacsql)
+
+(require 'cl-lib)
+(require 'package)
 (require 'seq)
+(require 'subr-x)
 
 ;;; Code:
 
+(defvar triples-sqlite-interface
+  (if (and (fboundp 'sqlite-available-p) (sqlite-available-p))
+      'builtin
+    'emacsql)
+  "The interface to sqlite to use.
+Either `builtin' or `emacsql'. Defaults to builtin when
+available. Builtin is available when the version is Emacs 29 or
+greater, and emacsql is usable when the `emacsql' package is
+installed.")
+
 (defun triples-connect (file)
   "Connect to the database FILE and make sure it is populated."
-  (let* ((db (emacsql-sqlite3 file))
-         (triple-table-exists
-          (emacsql db [:select name
-                       :from sqlite_master
-                       :where (= type table) :and (= name 'triples)])))
-    (unless triple-table-exists
-      (emacsql db [:create-table triples ([(subject text :not-null)
-                                               (predicate text :not-null)
-                                               (object :not-null)
-                                               (properties)])])
-      (emacsql db [:create-index subject_idx :on triples [subject]])
-      (emacsql db [:create-index subject_predicate_idx :on triples [subject predicate]])
-      (emacsql db [:create-index predicate_object_idx :on triples [predicate object]])
-      (emacsql db [:create-unique-index subject_predicate_object_properties_idx :on triples [subject predicate object properties]]))
-    db))
+  (unless (pcase-exhaustive triples-sqlite-interface
+              ('builtin
+               (and (fboundp 'sqlite-available-p) (sqlite-available-p)))
+              ('emacsql (require 'emacsql nil t)))
+    (error "The triples package requires either Emacs 29 or the emacsql package to be installed."))
+  (pcase triples-sqlite-interface
+    ('builtin (let* ((db (sqlite-open file)))
+                (sqlite-execute db "CREATE TABLE IF NOT EXISTS triples(subject TEXT NOT NULL, predicate TEXT NOT NULL, object NOT NULL, properties TEXT NOT NULL)")
+                (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_idx ON triples (subject)")
+                (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_predicate_idx ON triples (subject, predicate)")
+                (sqlite-execute db "CREATE INDEX IF NOT EXISTS predicate_object_idx ON triples (predicate, object)")
+                (sqlite-execute db "CREATE UNIQUE INDEX IF NOT EXISTS subject_predicate_object_properties_idx ON triples (subject, predicate, object, properties)")
+                db))
+    ('emacsql
+     (require 'emacsql)
+     (let* ((db (emacsql-sqlite file))
+            (triple-table-exists
+             (emacsql db [:select name
+                          :from sqlite_master
+                          :where (= type table) :and (= name 'triples)])))
+       (unless triple-table-exists
+         (emacsql db [:create-table triples ([(subject :not-null)
+                                              (predicate text :not-null)
+                                              (object :not-null)
+                                              (properties text :not-null)])])
+         (emacsql db [:create-index subject_idx :on triples [subject]])
+         (emacsql db [:create-index subject_predicate_idx :on triples [subject predicate]])
+         (emacsql db [:create-index predicate_object_idx :on triples [predicate object]])
+         (emacsql db [:create-unique-index subject_predicate_object_properties_idx :on triples [subject predicate object properties]]))
+       db))))
 
-(defun triples--ensure-property-val (vec)
-  "Return a VEC has 4 elements.
-We add a bogus value as a property because we want to be able
-to enforce unique constraints, which sqlite will not do will NULL
-values."
-  (if (= (length vec) 4)
-      vec
-    (vconcat vec '((:empty t)))))
+(defun triples-close (db)
+  "Close sqlite database DB."
+  (pcase triples-sqlite-interface
+    ('builtin (sqlite-close db))
+    ('emacsql (emacsql-close db))))
+
+(defun triples--decolon (sym)
+  "Remove colon from SYM."
+  (intern (string-replace ":" "" (format "%s" sym))))
+
+(defun triples--encolon (sym)
+  "Add a colon to SYM."
+  (intern (format ":%s" sym)))
+
+(defun triples-standardize-val (val)
+  "If VAL is a string, return it as enclosed in quotes
+This is done to have compatibility with the way emacsql stores
+values. Turn a symbol into a string as well, but not a quoted
+one, because sqlite cannot handle symbols."
+  (let ((print-escape-control-characters t))
+    (if val
+        (format "%S" val)
+      ;; Just to save a bit of space, let's use "()" instead of "null", which is
+      ;; what it would be turned into by the pcase above.
+      "()")))
+
+(defun triples-standardize-result (result)
+  "Return RESULT in standardized form.
+This imitates the way emacsql returns items, with strings
+becoming either symbols, lists, or strings depending on whether
+the string itself is wrapped in quotes."
+  (if (and (stringp result)
+           (string-prefix-p "\"" result)
+           (string-suffix-p "\"" result))
+      (string-remove-suffix "\"" (string-remove-prefix "\"" result))
+    (if (numberp result)
+        result
+      (read result))))
+
+(defun triples--insert (db subject predicate object &optional properties)
+  "Insert triple to DB: SUBJECT, PREDICATE, OBJECT with PROPERTIES.
+This is a SQL replace operation, because we don't want any
+duplicates; if the triple is the same, it has to differ at least
+with PROPERTIES. This is a low-level function that bypasses our
+normal schema checks, so should not be called from client programs."
+  (unless (symbolp predicate)
+    (error "Predicates in triples must always be symbols"))
+  (unless (plistp properties)
+    (error "Properties stored must always be plists"))
+  (pcase triples-sqlite-interface
+    ('builtin 
+     (sqlite-execute db "REPLACE INTO triples VALUES (?, ?, ?, ?)"
+                     (list (triples-standardize-val subject)
+                           (triples-standardize-val (triples--decolon predicate))
+                           (triples-standardize-val object)
+                           ;; Properties cannot be null, since in sqlite each null value
+                           ;; is distinct from each other, so replace would not replace
+                           ;; duplicate triples each with null properties.
+                           (triples-standardize-val properties))))
+    ('emacsql
+     ;; We use a simple small plist '(:t t). Unlike sqlite, we can't insert this
+     ;; as a string, or else it will store as something that would come out as a
+     ;; string.  And if we use nil, it will actually store a NULL in the cell.
+     (emacsql db [:replace :into triples :values $v1]
+              (vector subject (triples--decolon predicate) object (or properties '(:t t)))))))
+
+(defun triples--emacsql-andify (wc)
+  "In emacsql where clause WC, insert `:and' between query elements.
+Returns the new list with the added `:and.'s. The first element
+MUST be there `:where' clause. This does reverse the clause
+elements, but it shouldn't matter."
+  (cons (car wc) ;; the :where clause
+        (let ((clauses (cdr wc))
+              (result))
+          (while clauses
+            (push (car clauses) result)
+            (if (cdr clauses) (push :and result))
+            (setq clauses (cdr clauses)))
+          result)))
+
+(defun triples--delete (db &optional subject predicate object properties)
+  "Delete triples matching SUBJECT, PREDICATE, OBJECT, PROPERTIES.
+If any of these are nil, they will not selected for. If you set
+all to nil, everything will be deleted, so be careful!"
+  (pcase triples-sqlite-interface
+    ('builtin (sqlite-execute
+               db
+               (concat "DELETE FROM triples"
+                       (when (or subject predicate object properties)
+                         (concat " WHERE "
+                                 (string-join
+                                  (seq-filter #'identity
+                                              (list (when subject "SUBJECT = ?")
+                                                    (when predicate "PREDICATE = ?")
+                                                    (when object "OBJECT = ?")
+                                                    (when properties "PROPERTIES = ?")))
+                                  " AND "))))
+               (mapcar #'triples-standardize-val (seq-filter #'identity (list subject predicate object properties)))))
+    ('emacsql
+     (let ((n 0))
+       (apply #'emacsql
+              db
+              (apply #'vector
+                     (append '(:delete :from triples)
+                             (when (or subject predicate object properties)
+                               (triples--emacsql-andify 
+                                (append
+                                 '(:where)
+                                 (when subject `((= subject ,(intern (format "$s%d" (cl-incf n))))))
+                                 (when predicate `((= predicate ,(intern (format "$s%d" (cl-incf n))))))
+                                 (when object `((= object ,(intern (format "$s%d" (cl-incf n))))))
+                                 (when properties `((= properties ,(intern (format "$s%d" (cl-incf n)))))))))))
+              (seq-filter #'identity (list subject predicate object properties)))))))
+
+(defun triples--delete-subject-predicate-prefix (db subject pred-prefix)
+  "Delete triples matching SUBJECT and predicates with PRED-PREFIX."
+  (unless (symbolp pred-prefix)
+    (error "Predicates in triples must always be symbols"))
+  (pcase triples-sqlite-interface
+    ('builtin (sqlite-execute db "DELETE FROM triples WHERE subject = ? AND predicate LIKE ?"
+                  (list (triples-standardize-val subject)
+                        (format "%s/%%" (triples--decolon pred-prefix)))))
+    ('emacsql (emacsql db [:delete :from triples :where (= subject $s1) :and (like predicate $r2)]
+                       subject (format "%s/%%" (triples--decolon pred-prefix))))))
+
+(defun triples--select-pred-prefix (db subject pred-prefix)
+  "Return rows matching SUBJECT and PRED-PREFIX."
+  (pcase triples-sqlite-interface
+    ('builtin (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
+          (sqlite-select db "SELECT * FROM triples WHERE subject = ? AND predicate LIKE ?"
+                         (list (triples-standardize-val subject)
+                               (format "%s/%%" pred-prefix)))))
+    ('emacsql (emacsql db [:select * :from triples :where (= subject $s1) :and (like predicate $r2)]
+                       subject (format "%s/%%" pred-prefix)))))
+
+(defun triples--select-predicate-object-fragment (db predicate object-fragment)
+  "Return rows with PREDICATE and with OBJECT-FRAGMENT in object."
+  (pcase triples-sqlite-interface
+    ('builtin (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
+                      (sqlite-select db "SELECT * from triples WHERE predicate = ? AND object LIKE ?"
+                                     (list (triples-standardize-val predicate)
+                                           (format "%%%s%%" object-fragment)))))
+    ('emacsql (emacsql db [:select * :from triples :where (= predicate $s1) :and (like object $s2)]
+                       predicate (format "%%%s%%" object-fragment)))))
+
+(defun triples--select (db &optional subject predicate object properties selector)
+  "Return rows matching SUBJECT, PREDICATE, OBJECT, PROPERTIES.
+If any of these are nil, they are not included in the select
+statement. The SELECTOR is list of symbols subject, precicate,
+object, properties to retrieve or nil for *."
+  (pcase triples-sqlite-interface
+    ('builtin (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
+                      (sqlite-select db
+                                     (concat "SELECT "
+                                             (if selector
+                                                 (mapconcat (lambda (e) (format "%s" e)) selector ", ")
+                                               "*") " FROM triples"
+                                             (when (or subject predicate object properties)
+                                               (concat " WHERE "
+                                                       (string-join
+                                                        (seq-filter #'identity
+                                                                    (list (when subject "SUBJECT = ?")
+                                                                          (when predicate "PREDICATE = ?")
+                                                                          (when object "OBJECT = ?")
+                                                                          (when properties "PROPERTIES = ?")))
+                                                        " AND "))))
+                                     (mapcar #'triples-standardize-val (seq-filter #'identity (list subject predicate object properties))))))
+    ('emacsql
+     (let ((n 0))
+       (apply #'emacsql
+              db
+              (apply #'vector
+                     (append `(:select
+                               ,(if selector (apply #'vector selector) '*)
+                               :from triples)
+                             (when (or subject predicate object properties)
+                               (triples--emacsql-andify 
+                                (append
+                                 '(:where)
+                                 (when subject `((= subject ,(intern (format "$s%d" (cl-incf n))))))
+                                 (when predicate `((= predicate ,(intern (format "$s%d" (cl-incf n))))))
+                                 (when object `((= object ,(intern (format "$s%d" (cl-incf n))))))
+                                 (when properties `((= properties ,(intern (format "$s%d" (cl-incf n)))))))))))
+              (seq-filter #'identity (list subject predicate object properties)))))))
+
+;; Code after this point should not call sqlite or emacsql directly. If any more
+;; calls are needed, put them in a defun, make it work for sqlite and emacsql,
+;; and put them above.
 
 (defun triples--subjects (triples)
   "Return all unique subjects in TRIPLES."
@@ -73,60 +282,45 @@ values."
     (cl-loop for k being the hash-keys of subj-to-triples using (hash-values v)
              collect (cons k v))))
 
-(defun triples--decolon (sym)
-  "Remove colon from SYM."
-  (intern (string-replace ":" "" (format "%s" sym))))
-
-(defun triples--encolon (sym)
-  "Add a colon to SYM."
-  (intern (format ":%s" sym)))
-
 (defun triples--add (db op)
   "Perform OP on DB."
   (pcase (car op)
       ('replace-subject
        (mapc
         (lambda (sub)
-          (emacsql db [:delete :from triples :where (= subject $s1)] sub))
+          (triples--delete db sub))
         (triples--subjects (cdr op))))
       ('replace-subject-type
        (mapc (lambda (sub-triples)
                (mapc (lambda (type)
                        ;; We have to ignore base, which keeps type information in general.
                        (unless (eq type 'base)
-                         (emacsql db [:delete :from triples :where (= subject $s1)
-                                      :and (like predicate $r2)]
-                                  (car sub-triples) (format "%s/%%" type))))
+                         (triples--delete-subject-predicate-prefix db (car sub-triples) type)))
                      (seq-uniq
                       (mapcar #'car (mapcar #'triples-combined-to-type-and-prop
                                                      (mapcar #'cl-second (cdr sub-triples)))))))
              (triples--group-by-subjects (cdr op)))))
-    (mapc (lambda (triple)
-            (emacsql db [:replace :into triples
-                         :values $v1] (triples--ensure-property-val
-                                       (apply #'vector triple))))
+  (mapc (lambda (triple)
+          (apply #'triples--insert db triple))
           (cdr op)))
 
 (defun triples-properties-for-predicate (db cpred)
   "Return the properties in DB for combined predicate CPRED as a plist."
   (mapcan (lambda (row)
             (list (intern (format ":%s" (nth 1 row))) (nth 2 row)))
-          (emacsql db [:select * :from triples :where (= subject $s1)] cpred)))
+          (triples--select db cpred)))
 
 (defun triples-predicates-for-type (db type)
   "Return all predicates defined for TYPE in DB."
   (mapcar #'car
-          (emacsql db [:select object :from triples :where (= subject $s1)
-                       :and (= predicate 'schema/property)] type)))
+          (triples--select db type 'schema/property nil nil '(object))))
 
 (defun triples-verify-schema-compliant (db triples)
   "Error if TRIPLES is not compliant with schema in DB."
   (mapc (lambda (triple)
           (pcase-let ((`(,type . ,prop) (triples-combined-to-type-and-prop (nth 1 triple))))
             (unless (or (eq type 'base)
-                        (emacsql db [:select * :from triples :where (= subject $s1)
-                                     :and (= predicate 'schema/property) :and (= object $s2)]
-                                 type prop))
+                        (triples--select db type 'schema/property prop nil))
               (error "Property %s not found in schema" (nth 1 triple)))))
         triples)
   (mapc (lambda (triple)
@@ -170,6 +364,21 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
     (triples-verify-schema-compliant db (cdr op))
     (triples--add db op)))
 
+(defmacro triples-with-transaction (db &rest body)
+  "Create a transaction using DB, executing BODY.
+The transaction will abort if an error is thrown."
+  (declare (indent 0) (debug t))
+  (let ((db-var (gensym "db")))
+    (pcase triples-sqlite-interface
+      ('builtin  `(let ((,db-var ,db))
+                    (condition-case nil
+                        (progn
+                          (sqlite-transaction ,db-var)
+                          ,@body
+                          (sqlite-commit ,db-var))  
+                      (error (sqlite-rollback ,db-var)))))
+      ('emacsql `(emacsql-with-transaction ,db ,@body)))))
+
 (defun triples-set-types (db subject &rest combined-props)
   "Set all data for types in COMBINED-PROPS in DB for SUBJECT.
 COMBINED-PROPS is a plist which takes combined properties such as
@@ -183,7 +392,8 @@ given in the COMBINED-PROPS will be removed."
                   (plist-put (gethash (triples--decolon type) type-to-plist)
                              (triples--encolon prop) val) type-to-plist)))
      combined-props)
-    (emacsql-with-transaction db
+    (triples-with-transaction
+      db
       (cl-loop for k being the hash-keys of type-to-plist using (hash-values v)
                do (apply #'triples-set-type db subject k v)))))
 
@@ -212,8 +422,7 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
                      (cons (cons (nth 2 db-triple) (nth 3 db-triple))
                            (gethash (nth 1 db-triple) preds))
                      preds))
-          (emacsql db [:select * :from triples :where (= subject $s1)
-                       :and (like predicate $r2)] subject (format "%s/%%" type)))
+          (triples--select-pred-prefix db subject type))
     (append
      (cl-loop for k being the hash-keys of preds using (hash-values v)
               nconc (list (triples--encolon (cdr (triples-combined-to-type-and-prop k)))
@@ -230,23 +439,21 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
                                      db (triples-type-and-prop-to-combined type pred))
                                     :base/virtual-reversed)))
                 (when reversed-prop
-                  (let ((result (emacsql db [:select subject :from triples :where (= object $s1)
-                                             :and (= predicate $s2)] subject reversed-prop)))
+                  (let ((result
+                         (triples--select db nil reversed-prop subject nil '(subject))))
                     (when result (cons (triples--encolon pred) (list (mapcar #'car result)))))))))))
 
 (defun triples-remove-type (db subject type)
   "Remove TYPE for SUBJECT in DB, and all associated data."
-  (emacsql-with-transaction db
-    (emacsql db [:delete :from triples :where (= subject $s1)
-                 :and (= predicate 'base/type) :and (= object $s2)] subject type)
-    (emacsql db [:delete :from triples :where (= subject $s1)
-                 :and (like predicate $r2)] subject (format "%s/%%" type))))
+  (triples-with-transaction
+    db
+    (triples--delete db subject 'base/type type)
+    (triples--delete-subject-predicate-prefix db subject type)))
 
 (defun triples-get-types (db subject)
   "From DB, get all types for SUBJECT."
-  (mapcar #'car (emacsql db [:select object :from triples :where (= subject $s1)
-                             :and (= predicate 'base/type)]
-                         subject)))
+  (mapcar #'car
+          (triples--select db subject 'base/type nil nil '(object))))
 
 (defun triples-get-subject (db subject)
   "From DB return all properties for SUBJECT as a single plist."
@@ -260,7 +467,7 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
 (defun triples-set-subject (db subject &rest type-vals-cons)
   "From DB set properties of SUBJECT to TYPE-VALS-CONS data.
 TYPE-VALS-CONS is a list of conses, combining a type and a plist of values."
-  (emacsql-with-transaction db
+  (triples-with-transaction db
     (triples-delete-subject db subject)
     (mapc (lambda (cons)
             (apply #'triples-set-type db subject cons))
@@ -268,23 +475,19 @@ TYPE-VALS-CONS is a list of conses, combining a type and a plist of values."
 
 (defun triples-delete-subject (db subject)
   "Delete all data in DB associated with SUBJECT."
-  (emacsql-with-transaction db
-    (emacsql db [:delete :from triples :where (= subject $s1)] subject)))
+  (triples--delete db subject))
 
 (defun triples-search (db cpred text)
   "Search DB for instances of combined property CPRED with TEXT."
-  (emacsql db [:select * :from triples :where (= predicate $i1)
-               :and (like object $r2)] (triples--decolon cpred)
-                       (format "%%%s%%" text)))
+  (triples--select-predicate-object-fragment db cpred text))
 
 (defun triples-with-predicate (db cpred)
   "Return all triples in DB with CPRED as its combined predicate."
-  (emacsql db [:select * :from triples :where (= predicate $i1)] (triples--decolon cpred)))
+  (triples--select db nil cpred))
 
 (defun triples-subjects-with-predicate-object (db cpred obj)
   "Return all subjects in DB with CPRED equal to OBJ."
-  (emacsql db [:select subject :from triples :where (= predicate $i1) :and (= object $s2)]
-           (triples--decolon cpred) obj))
+  (triples--select db nil cpred obj))
 
 (defun triples-subjects-of-type (db type)
   "Return a list of all subjects with a particular TYPE in DB."

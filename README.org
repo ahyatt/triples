@@ -1,6 +1,6 @@
 #+TITLE: Triples
 
-The =triples= module is a standard database module designed for use in other emacs modules.  It works with the =sqlite= module, and provides a simple way of storing entities and their associated schema.  The triples module is well suited to graph-like applications, where links between entities are important.  The module has wrappers for most common operations, but it is anticipated that occasionally client modules would need to make their own =sqlite= calls.  Many database can be handled by the =triples= module.  It is expected that clients supply the database connection.
+The =triples= module is a standard database module designed for use in other emacs modules.  It works with either the builtin sqlite in Emacs 29 or the [[https://github.com/magit/emacsql][emacsql]] module, and provides a simple way of storing entities and their associated schema.  The triples module is well suited to graph-like applications, where links between entities are important.  The module has wrappers for most common operations, but it is anticipated that occasionally client modules would need to make their own sqlite calls.  Many different database can be handled by the =triples= module.  It is expected that clients supply the database connection.
 
 * Maturity
 This module is very new should be considered alpha quality.
@@ -73,7 +73,7 @@ There are other useful functions, including:
 - =triples-with-predicate=, gets all triples that is about a specific property,
 - =triples-with-predicate-object=, get all subjects whose predicate is equal to /object/,
 - =triples-subjects-of-type=, get all subjects which have a particular type.
-* Preciate, with type and without
+* Predicates, with type and without
 Sometimes the triples library will require predicates that are without type, and sometimes with type, or "combined predicates".  The rule is that if the type is already specified in the function, it does not need to be respecified.  If the type is not specified, it is included in the combined predicate.
 
 When returning data, if data is from just one type, the type is not returned in the returned predicates.  If the data is from multiple types, the type is returned as combined predicates.
