@@ -55,7 +55,7 @@ installed.")
     (error "The triples package requires either Emacs 29 or the emacsql package to be installed."))
   (pcase triples-sqlite-interface
     ('builtin (let* ((db (sqlite-open file)))
-                (sqlite-execute db "CREATE TABLE IF NOT EXISTS triples(subject TEXT NOT NULL, predicate TEXT NOT NULL, object TEXT, properties TEXT NOT NULL)")
+                (sqlite-execute db "CREATE TABLE IF NOT EXISTS triples(subject TEXT NOT NULL, predicate TEXT NOT NULL, object NOT NULL, properties TEXT NOT NULL)")
                 (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_idx ON triples (subject)")
                 (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_predicate_idx ON triples (subject, predicate)")
                 (sqlite-execute db "CREATE INDEX IF NOT EXISTS predicate_object_idx ON triples (predicate, object)")
@@ -66,13 +66,13 @@ installed.")
      (let* ((db (emacsql-sqlite file))
             (triple-table-exists
              (emacsql db [:select name
-                                  :from sqlite_master
-                                  :where (= type table) :and (= name 'triples)])))
+                          :from sqlite_master
+                          :where (= type table) :and (= name 'triples)])))
        (unless triple-table-exists
-         (emacsql db [:create-table triples ([(subject text :not-null)
+         (emacsql db [:create-table triples ([(subject :not-null)
                                               (predicate text :not-null)
                                               (object :not-null)
-                                              (properties)])])
+                                              (properties text :not-null)])])
          (emacsql db [:create-index subject_idx :on triples [subject]])
          (emacsql db [:create-index subject_predicate_idx :on triples [subject predicate]])
          (emacsql db [:create-index predicate_object_idx :on triples [predicate object]])
@@ -139,8 +139,11 @@ normal schema checks, so should not be called from client programs."
                            ;; duplicate triples each with null properties.
                            (triples-standardize-val properties))))
     ('emacsql
+     ;; We use a simple small plist '(:t t). Unlike sqlite, we can't insert this
+     ;; as a string, or else it will store as something that would come out as a
+     ;; string.  And if we use nil, it will actually store a NULL in the cell.
      (emacsql db [:replace :into triples :values $v1]
-              [subject predicate object (triples-standardize-val properties)]))))
+              (vector subject (triples--decolon predicate) object (or properties '(:t t)))))))
 
 (defun triples--emacsql-andify (wc)
   "In emacsql where clause WC, insert `:and' between query elements.
@@ -174,18 +177,21 @@ all to nil, everything will be deleted, so be careful!"
                                                     (when properties "PROPERTIES = ?")))
                                   " AND "))))
                (mapcar #'triples-standardize-val (seq-filter #'identity (list subject predicate object properties)))))
-    ('emacsql (emacsql db
-                       (apply #'vector
-                              (append '(:delete :from triples)
-                                      (when (or subject predicate object properties)
-                                        (triples--emacsql-andify 
-                                         (append
-                                          '(:where)
-                                          (when subject '((= subject $s1)))
-                                          (when predicate '((= predicate $r2)))
-                                          (when object '((= object $s3)))
-                                          (when properties '((= properties $r4))))))))
-                       (seq-filter #'identity (list subject predicate object properties))))))
+    ('emacsql
+     (let ((n 0))
+       (apply #'emacsql
+              db
+              (apply #'vector
+                     (append '(:delete :from triples)
+                             (when (or subject predicate object properties)
+                               (triples--emacsql-andify 
+                                (append
+                                 '(:where)
+                                 (when subject `((= subject ,(intern (format "$s%d" (cl-incf n))))))
+                                 (when predicate `((= predicate ,(intern (format "$s%d" (cl-incf n))))))
+                                 (when object `((= object ,(intern (format "$s%d" (cl-incf n))))))
+                                 (when properties `((= properties ,(intern (format "$s%d" (cl-incf n)))))))))))
+              (seq-filter #'identity (list subject predicate object properties)))))))
 
 (defun triples--delete-subject-predicate-prefix (db subject pred-prefix)
   "Delete triples matching SUBJECT and predicates with PRED-PREFIX."
@@ -215,7 +221,7 @@ all to nil, everything will be deleted, so be careful!"
                       (sqlite-select db "SELECT * from triples WHERE predicate = ? AND object LIKE ?"
                                      (list (triples-standardize-val predicate)
                                            (format "%%%s%%" object-fragment)))))
-    ('emacsql (emacsql db [:select * :from triples :where (= predicate $r1) :and (like object $s2)]
+    ('emacsql (emacsql db [:select * :from triples :where (= predicate $s1) :and (like object $s2)]
                        predicate (format "%%%s%%" object-fragment)))))
 
 (defun triples--select (db &optional subject predicate object properties selector)
@@ -240,21 +246,23 @@ object, properties to retrieve or nil for *."
                                                                           (when properties "PROPERTIES = ?")))
                                                         " AND "))))
                                      (mapcar #'triples-standardize-val (seq-filter #'identity (list subject predicate object properties))))))
-    ('emacsql (emacsql db (apply #'vector
-                                 (append `(:select
-                                           ,(if selector
-                                                (mapconcat (lambda (e) (format "%s" e)) selector ", ")
-                                              '*)
-                                           :from triples)
-                                         (when (or subject predicate object properties)
-                                           (triples--emacsql-andify 
-                                            (append
-                                             '(:where)
-                                             (when subject '((= subject $s1)))
-                                             (when predicate '((= predicate $r2)))
-                                             (when object '((= object $s3)))
-                                             (when properties '((= properties $r4))))))))
-                       (seq-filter #'identity (list subject predicate object properties))))))
+    ('emacsql
+     (let ((n 0))
+       (apply #'emacsql
+              db
+              (apply #'vector
+                     (append `(:select
+                               ,(if selector (apply #'vector selector) '*)
+                               :from triples)
+                             (when (or subject predicate object properties)
+                               (triples--emacsql-andify 
+                                (append
+                                 '(:where)
+                                 (when subject `((= subject ,(intern (format "$s%d" (cl-incf n))))))
+                                 (when predicate `((= predicate ,(intern (format "$s%d" (cl-incf n))))))
+                                 (when object `((= object ,(intern (format "$s%d" (cl-incf n))))))
+                                 (when properties `((= properties ,(intern (format "$s%d" (cl-incf n)))))))))))
+              (seq-filter #'identity (list subject predicate object properties)))))))
 
 ;; Code after this point should not call sqlite or emacsql directly. If any more
 ;; calls are needed, put them in a defun, make it work for sqlite and emacsql,
@@ -361,13 +369,15 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
 The transaction will abort if an error is thrown."
   (declare (indent 0) (debug t))
   (let ((db-var (gensym "db")))
-    `(let ((,db-var ,db))
-       (condition-case nil
-           (progn
-             (sqlite-transaction ,db-var)
-             ,@body
-             (sqlite-commit ,db-var))  
-         (error (sqlite-rollback ,db-var))))))
+    (pcase triples-sqlite-interface
+      ('builtin  `(let ((,db-var ,db))
+                    (condition-case nil
+                        (progn
+                          (sqlite-transaction ,db-var)
+                          ,@body
+                          (sqlite-commit ,db-var))  
+                      (error (sqlite-rollback ,db-var)))))
+      ('emacsql `(emacsql-with-transaction ,db ,@body)))))
 
 (defun triples-set-types (db subject &rest combined-props)
   "Set all data for types in COMBINED-PROPS in DB for SUBJECT.
