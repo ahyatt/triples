@@ -118,7 +118,7 @@ the string itself is wrapped in quotes."
         result
       (read result))))
 
-(defun triples--insert (db subject predicate object &optional properties)
+(defun triples-db-insert (db subject predicate object &optional properties)
   "Insert triple to DB: SUBJECT, PREDICATE, OBJECT with PROPERTIES.
 This is a SQL replace operation, because we don't want any
 duplicates; if the triple is the same, it has to differ at least
@@ -159,7 +159,7 @@ elements, but it shouldn't matter."
             (setq clauses (cdr clauses)))
           result)))
 
-(defun triples--delete (db &optional subject predicate object properties)
+(defun triples-db-delete (db &optional subject predicate object properties)
   "Delete triples matching SUBJECT, PREDICATE, OBJECT, PROPERTIES.
 If any of these are nil, they will not selected for. If you set
 all to nil, everything will be deleted, so be careful!"
@@ -193,7 +193,7 @@ all to nil, everything will be deleted, so be careful!"
                                  (when properties `((= properties ,(intern (format "$s%d" (cl-incf n)))))))))))
               (seq-filter #'identity (list subject predicate object properties)))))))
 
-(defun triples--delete-subject-predicate-prefix (db subject pred-prefix)
+(defun triples-db-delete-subject-predicate-prefix (db subject pred-prefix)
   "Delete triples matching SUBJECT and predicates with PRED-PREFIX."
   (unless (symbolp pred-prefix)
     (error "Predicates in triples must always be symbols"))
@@ -204,7 +204,7 @@ all to nil, everything will be deleted, so be careful!"
     ('emacsql (emacsql db [:delete :from triples :where (= subject $s1) :and (like predicate $r2)]
                        subject (format "%s/%%" (triples--decolon pred-prefix))))))
 
-(defun triples--select-pred-prefix (db subject pred-prefix)
+(defun triples-db-select-pred-prefix (db subject pred-prefix)
   "Return rows matching SUBJECT and PRED-PREFIX."
   (pcase triples-sqlite-interface
     ('builtin (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
@@ -214,7 +214,7 @@ all to nil, everything will be deleted, so be careful!"
     ('emacsql (emacsql db [:select * :from triples :where (= subject $s1) :and (like predicate $r2)]
                        subject (format "%s/%%" pred-prefix)))))
 
-(defun triples--select-predicate-object-fragment (db predicate object-fragment)
+(defun triples-db-select-predicate-object-fragment (db predicate object-fragment)
   "Return rows with PREDICATE and with OBJECT-FRAGMENT in object."
   (pcase triples-sqlite-interface
     ('builtin (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
@@ -224,7 +224,7 @@ all to nil, everything will be deleted, so be careful!"
     ('emacsql (emacsql db [:select * :from triples :where (= predicate $s1) :and (like object $s2)]
                        predicate (format "%%%s%%" object-fragment)))))
 
-(defun triples--select (db &optional subject predicate object properties selector)
+(defun triples-db-select (db &optional subject predicate object properties selector)
   "Return rows matching SUBJECT, PREDICATE, OBJECT, PROPERTIES.
 If any of these are nil, they are not included in the select
 statement. The SELECTOR is list of symbols subject, precicate,
@@ -288,39 +288,39 @@ object, properties to retrieve or nil for *."
       ('replace-subject
        (mapc
         (lambda (sub)
-          (triples--delete db sub))
+          (triples-db-delete db sub))
         (triples--subjects (cdr op))))
       ('replace-subject-type
        (mapc (lambda (sub-triples)
                (mapc (lambda (type)
                        ;; We have to ignore base, which keeps type information in general.
                        (unless (eq type 'base)
-                         (triples--delete-subject-predicate-prefix db (car sub-triples) type)))
+                         (triples-db-delete-subject-predicate-prefix db (car sub-triples) type)))
                      (seq-uniq
                       (mapcar #'car (mapcar #'triples-combined-to-type-and-prop
                                                      (mapcar #'cl-second (cdr sub-triples)))))))
              (triples--group-by-subjects (cdr op)))))
   (mapc (lambda (triple)
-          (apply #'triples--insert db triple))
+          (apply #'triples-db-insert db triple))
           (cdr op)))
 
 (defun triples-properties-for-predicate (db cpred)
   "Return the properties in DB for combined predicate CPRED as a plist."
   (mapcan (lambda (row)
             (list (intern (format ":%s" (nth 1 row))) (nth 2 row)))
-          (triples--select db cpred)))
+          (triples-db-select db cpred)))
 
 (defun triples-predicates-for-type (db type)
   "Return all predicates defined for TYPE in DB."
   (mapcar #'car
-          (triples--select db type 'schema/property nil nil '(object))))
+          (triples-db-select db type 'schema/property nil nil '(object))))
 
 (defun triples-verify-schema-compliant (db triples)
   "Error if TRIPLES is not compliant with schema in DB."
   (mapc (lambda (triple)
           (pcase-let ((`(,type . ,prop) (triples-combined-to-type-and-prop (nth 1 triple))))
             (unless (or (eq type 'base)
-                        (triples--select db type 'schema/property prop nil))
+                        (triples-db-select db type 'schema/property prop nil))
               (error "Property %s not found in schema" (nth 1 triple)))))
         triples)
   (mapc (lambda (triple)
@@ -422,7 +422,7 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
                      (cons (cons (nth 2 db-triple) (nth 3 db-triple))
                            (gethash (nth 1 db-triple) preds))
                      preds))
-          (triples--select-pred-prefix db subject type))
+          (triples-db-select-pred-prefix db subject type))
     (append
      (cl-loop for k being the hash-keys of preds using (hash-values v)
               nconc (list (triples--encolon (cdr (triples-combined-to-type-and-prop k)))
@@ -440,20 +440,20 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
                                     :base/virtual-reversed)))
                 (when reversed-prop
                   (let ((result
-                         (triples--select db nil reversed-prop subject nil '(subject))))
+                         (triples-db-select db nil reversed-prop subject nil '(subject))))
                     (when result (cons (triples--encolon pred) (list (mapcar #'car result)))))))))))
 
 (defun triples-remove-type (db subject type)
   "Remove TYPE for SUBJECT in DB, and all associated data."
   (triples-with-transaction
     db
-    (triples--delete db subject 'base/type type)
-    (triples--delete-subject-predicate-prefix db subject type)))
+    (triples-db-delete db subject 'base/type type)
+    (triples-db-delete-subject-predicate-prefix db subject type)))
 
 (defun triples-get-types (db subject)
   "From DB, get all types for SUBJECT."
   (mapcar #'car
-          (triples--select db subject 'base/type nil nil '(object))))
+          (triples-db-select db subject 'base/type nil nil '(object))))
 
 (defun triples-get-subject (db subject)
   "From DB return all properties for SUBJECT as a single plist."
@@ -475,19 +475,19 @@ TYPE-VALS-CONS is a list of conses, combining a type and a plist of values."
 
 (defun triples-delete-subject (db subject)
   "Delete all data in DB associated with SUBJECT."
-  (triples--delete db subject))
+  (triples-db-delete db subject))
 
 (defun triples-search (db cpred text)
   "Search DB for instances of combined property CPRED with TEXT."
-  (triples--select-predicate-object-fragment db cpred text))
+  (triples-db-select-predicate-object-fragment db cpred text))
 
 (defun triples-with-predicate (db cpred)
   "Return all triples in DB with CPRED as its combined predicate."
-  (triples--select db nil cpred))
+  (triples-db-select db nil cpred))
 
 (defun triples-subjects-with-predicate-object (db cpred obj)
   "Return all subjects in DB with CPRED equal to OBJ."
-  (triples--select db nil cpred obj))
+  (triples-db-select db nil cpred obj))
 
 (defun triples-subjects-of-type (db type)
   "Return a list of all subjects with a particular TYPE in DB."
