@@ -368,16 +368,27 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
   "Create a transaction using DB, executing BODY.
 The transaction will abort if an error is thrown."
   (declare (indent 0) (debug t))
-  (let ((db-var (gensym "db")))
-    (pcase triples-sqlite-interface
-      ('builtin  `(let ((,db-var ,db))
-                    (condition-case nil
-                        (progn
-                          (sqlite-transaction ,db-var)
-                          ,@body
-                          (sqlite-commit ,db-var))  
-                      (error (sqlite-rollback ,db-var)))))
-      ('emacsql `(emacsql-with-transaction ,db ,@body)))))
+  `(triples--with-transaction ,db (lambda () ,@body)))
+
+(defmacro triples--eval-when-fboundp (sym form)
+  "Delay macroexpansion to runtime if SYM is not yet `fboundp'."
+  (declare (indent 1) (debug (symbolp form)))
+  (if (fboundp sym)
+      form
+    `(eval ',form t)))
+
+(defun triples--with-transaction (db body-fun)
+  (pcase triples-sqlite-interface
+    ('builtin  (condition-case nil
+                   (progn
+                     (sqlite-transaction db)
+                     (funcall body-fun)
+                     (sqlite-commit db))
+                 (error (sqlite-rollback db))))
+    ('emacsql (funcall (triples--eval-when-fboundp emacsql-with-transaction
+                         (lambda (db body-fun)
+                           (emacsql-with-transaction db (funcall body-fun))))
+                       db body-fun))))
 
 (defun triples-set-types (db subject &rest combined-props)
   "Set all data for types in COMBINED-PROPS in DB for SUBJECT.
