@@ -68,6 +68,13 @@ easily debug into it.")
            (skip-unless (featurep 'emacsql))
            ,@body)))))
 
+(triples-deftest triples-connect-default ()
+  (let* ((triples-default-database-filename (make-temp-file "triples-default"))
+         (db (triples-connect)))
+    (triples-db-insert db 1 'pred 2)
+    (triples-close db)
+    (should (file-exists-p triples-default-database-filename))))
+
 (triples-deftest triples-test-insert ()
   (triples-test-with-temp-db
     (triples-db-insert db "sub" 'pred "obj")

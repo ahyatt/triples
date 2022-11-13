@@ -1,6 +1,6 @@
 #+TITLE: Triples
 
-The =triples= module is a standard database module designed for use in other emacs modules.  It works with either the builtin sqlite in Emacs 29 or the [[https://github.com/magit/emacsql][emacsql]] module, and provides a simple way of storing entities and their associated schema.  The triples module is well suited to graph-like applications, where links between entities are important.  The module has wrappers for most common operations, but it is anticipated that occasionally client modules would need to make their own sqlite calls.  Many different database instances can be handled by the =triples= module.  It is expected that clients supply the database connection.
+The =triples= module is a standard database module designed for use in other emacs modules.  It works with either the builtin sqlite in Emacs 29 or the [[https://github.com/magit/emacsql][emacsql]] module, and provides a simple way of storing entities and their associated schema.  The triples module is well suited to graph-like applications, where links between entities are important.  The module has wrappers for most common operations, but it is anticipated that occasionally client modules would need to make their own sqlite calls.  Many different database instances can be handled by the =triples= module.  It is expected that clients supply the database connection.  However, a standard triples database can be used, which is defined in =triples-default-database-filename=, and used when no filename is used to connect to by clients of the triples library.
 
 * Installing
 This module is available through GNU ELPA, and can be installed as normal.  However, most of the time this module is only useful in concert with another module which uses it as a library and will declare it as a dependency, so unless you are planning on developing with it, there is usually no need to install it directly.
@@ -8,8 +8,8 @@ This module is available through GNU ELPA, and can be installed as normal.  Howe
 This module is very new should be considered alpha quality.
 
 While it has basic functionality, there are significant parts, such as a querying language, that are missing.  Whether anyone needs such parts will determine the priority in which they get built.
-
-* Types and Schema
+* Using the =triples= library
+** Types and Schema
 =triples= employs a design in which each entity can be a member of many /types/, and each /type/ has multiple /properties/.  The properties that a type has is defined by /schema/.  Let's take an example:
 
 #+begin_src emacs-lisp
@@ -28,13 +28,23 @@ This adds a type called =person=, which can be set on any entity.  There's anoth
 The =person= has 2 properties, =name=, and =age=.  They are both marked as unique, so they take a single value, not a list.  If =:base/unique= was not true, the value would be a list.  We also specify what type it is, which can be any elisp type.  =employee= is similarly constructed, but has an interesting property, =reportees=, which is a =base/virtual-reversed= property, meaning that it is supplied with values, but rather can get them from the reversed relation of =employee/manager=.
 
 We'll explore how these types are used can be used in the section after next.
-* The triples concept
+** The triples concept
 A triple is a unit of data consisting of a /subject/, a /predicate/, an /object/, and, optionally, internal metadata about the unit.  The triple can be thought of as a link between the subject and object via the predicate.
 
 Let's say that, as in the example above, we want to store someone's name.  The triples would be a /subject/ that uniquely identifies the person, a /predicate/ that indicates the link between subject and object is about a name, and the object, which is the name value.
 
 The object can become the subject, and this explains how the =base/virtual-reversed= predicate works.   If Bob is the manager of Alice, then there could be a triple with Alice as the subject, =manager= as the predicate, and Bob as the object.  But we can also find the reversed links, and ask who all are all the people that Bob manages.  In this case, Bob is the subject, and Alice is the object.  However, we don't actually need to store this information and try to keep it in sync, we can just get it by querying for when the Bob is the object and =manager= is the predicate.
-* Setting and retrieving
+** Connecting
+Before a database can be used, it should be connected with.  This is done by the =triples-connect= function, which can be called with a filename or without.  If a filename isn't given, a default one for the triples library, given in =triples-default-database-filename= is used.  This provides a standard database for those that want to take advantage of the possibilities of having data from different sources that can build on each other.
+
+An example of using this standard database is simply:
+#+begin_src emacs-lisp
+(let ((db (triples-connect)))
+  (do-something-with db)
+  (do-something-else-with db))
+#+end_src
+You could also use a global variable to hold the database connection, if you need the database to be active during many user actions.
+** Setting and retrieving
 A subject can be set all at once (everything about the subject), or dealt with per-type.  For example, the following are equivalent:
 
 #+begin_src emacs-lisp
@@ -75,11 +85,11 @@ There are other useful functions, including:
 - =triples-with-predicate=, gets all triples that is about a specific property,
 - =triples-with-predicate-object=, get all subjects whose predicate is equal to /object/,
 - =triples-subjects-of-type=, get all subjects which have a particular type.
-* Predicates, with type and without
+** Predicates, with type and without
 Sometimes the triples library will require predicates that are without type, and sometimes with type, or "combined predicates".  The rule is that if the type is already specified in the function, it does not need to be respecified.  If the type is not specified, it is included in the combined predicate.
 
 When returning data, if data is from just one type, the type is not returned in the returned predicates.  If the data is from multiple types, the type is returned as combined predicates.
-* Using direct SQL access
+** Using direct SQL access
 Sometimes clients of this library need to do something with the database, and the higher-level triples functionality doesn't help.  If you would like lower-level functionality into handling triples, you can use the same low-level methods that the rest of this library uses.  These start with =triples-db-=.
 - =triples-db-insert=: Add a triple.  Uses SQL's =REPLACE= command, so there can't be completely duplicate triples (including the property, which often can serve as a disambiguation mechanism).
 - =triples-db-delete=: Delete triples matching the arguments.  Empty arguments match everything, so =(triples-db-delete db)= will delete all triples.
@@ -88,3 +98,12 @@ Sometimes clients of this library need to do something with the database, and th
 - =triples-db-select=: Select triples matching any of the parts of the triple.  Like =triples-db-delete=, empty arguments match everything.  You can specify exactly what to return with a selector.
 
 Sometimes this still doesn't cover what you might want to do.  In that case, you should write your own direct database access.  However, please follow the coding patterns for the functions above in writing it, so that the code works with both Emacs 29's builtin sqlite, and =emacsql=.
+* Using =triples= to develop apps with shared data
+One possibility that arises from a design with entities (in triples terms,
+subjects) having multiple decomposable types like is done in the =triples= library
+is the possibility of many modules using the same database, each one adding
+their own data, but being able to make use out of each other's data.
+
+For example, in the examples above we have a simple system for storing data about people and employees.  If another module adds a type for annotations, now you can potentially annotate any entity, including people and employees.  If another module adds functionality to store and complete on email addresses, now people, employees, and potentially types added by other modules such as organizations could have email addresses.
+
+If this seems to fit your use case, you may want to try to just use the default database.  The downside of this is that nothing prevents other modules from changing, corrupting or deleting your data.

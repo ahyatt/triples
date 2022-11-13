@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/triples
 ;; Package-Requires: ((seq "2.0") (emacs "25"))
 ;; Keywords: triples, kg, data, sqlite
-;; Version: 0.1.2
+;; Version: 0.2
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 2 of the
@@ -46,38 +46,44 @@ available. Builtin is available when the version is Emacs 29 or
 greater, and emacsql is usable when the `emacsql' package is
 installed.")
 
-(defun triples-connect (file)
-  "Connect to the database FILE and make sure it is populated."
+(defconst triples-default-database-filename (locate-user-emacs-file "triples.db")
+  "The default filename triples database. If no database is
+specified, this file is used.")
+
+(defun triples-connect (&optional file)
+  "Connect to the database FILE and make sure it is populated.
+If FILE is nil, use `triples-default-database-filename'."
   (unless (pcase-exhaustive triples-sqlite-interface
               ('builtin
                (and (fboundp 'sqlite-available-p) (sqlite-available-p)))
               ('emacsql (require 'emacsql nil t)))
     (error "The triples package requires either Emacs 29 or the emacsql package to be installed."))
-  (pcase triples-sqlite-interface
-    ('builtin (let* ((db (sqlite-open file)))
-                (sqlite-execute db "CREATE TABLE IF NOT EXISTS triples(subject TEXT NOT NULL, predicate TEXT NOT NULL, object NOT NULL, properties TEXT NOT NULL)")
-                (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_idx ON triples (subject)")
-                (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_predicate_idx ON triples (subject, predicate)")
-                (sqlite-execute db "CREATE INDEX IF NOT EXISTS predicate_object_idx ON triples (predicate, object)")
-                (sqlite-execute db "CREATE UNIQUE INDEX IF NOT EXISTS subject_predicate_object_properties_idx ON triples (subject, predicate, object, properties)")
-                db))
-    ('emacsql
-     (require 'emacsql)
-     (let* ((db (emacsql-sqlite file))
-            (triple-table-exists
-             (emacsql db [:select name
-                          :from sqlite_master
-                          :where (= type table) :and (= name 'triples)])))
-       (unless triple-table-exists
-         (emacsql db [:create-table triples ([(subject :not-null)
-                                              (predicate text :not-null)
-                                              (object :not-null)
-                                              (properties text :not-null)])])
-         (emacsql db [:create-index subject_idx :on triples [subject]])
-         (emacsql db [:create-index subject_predicate_idx :on triples [subject predicate]])
-         (emacsql db [:create-index predicate_object_idx :on triples [predicate object]])
-         (emacsql db [:create-unique-index subject_predicate_object_properties_idx :on triples [subject predicate object properties]]))
-       db))))
+  (let ((file (or file triples-default-database-filename)))
+    (pcase triples-sqlite-interface
+      ('builtin (let* ((db (sqlite-open file)))
+                  (sqlite-execute db "CREATE TABLE IF NOT EXISTS triples(subject TEXT NOT NULL, predicate TEXT NOT NULL, object NOT NULL, properties TEXT NOT NULL)")
+                  (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_idx ON triples (subject)")
+                  (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_predicate_idx ON triples (subject, predicate)")
+                  (sqlite-execute db "CREATE INDEX IF NOT EXISTS predicate_object_idx ON triples (predicate, object)")
+                  (sqlite-execute db "CREATE UNIQUE INDEX IF NOT EXISTS subject_predicate_object_properties_idx ON triples (subject, predicate, object, properties)")
+                  db))
+      ('emacsql
+       (require 'emacsql)
+       (let* ((db (emacsql-sqlite file))
+              (triple-table-exists
+               (emacsql db [:select name
+                                    :from sqlite_master
+                                    :where (= type table) :and (= name 'triples)])))
+         (unless triple-table-exists
+           (emacsql db [:create-table triples ([(subject :not-null)
+                                                (predicate text :not-null)
+                                                (object :not-null)
+                                                (properties text :not-null)])])
+           (emacsql db [:create-index subject_idx :on triples [subject]])
+           (emacsql db [:create-index subject_predicate_idx :on triples [subject predicate]])
+           (emacsql db [:create-index predicate_object_idx :on triples [predicate object]])
+           (emacsql db [:create-unique-index subject_predicate_object_properties_idx :on triples [subject predicate object properties]]))
+         db)))))
 
 (defun triples-close (db)
   "Close sqlite database DB."
