@@ -345,6 +345,15 @@ easily debug into it.")
                    (sqlite-select db "SELECT COUNT(*) FROM triples WHERE subject = ? AND predicate = 'base/type' AND object = 'marker'"
                                   (list (triples-standardize-val "foo")))))))
 
+(ert-deftest triples-backup-strategy-daily ()
+  (cl-letf (((symbol-function 'current-time)
+             (lambda ()
+               (encode-time (iso8601-parse "2023-01-15T12:00Z")))))
+    (should (triples-backup-strategy-daily (encode-time (iso8601-parse "2023-01-14T12:00Z"))))
+    (should (triples-backup-strategy-daily (encode-time (iso8601-parse "2022-01-01T12:00Z"))))
+    (should-not (triples-backup-strategy-daily (encode-time (iso8601-parse "2023-01-15T12:00Z"))))
+    (should-not (triples-backup-strategy-daily (encode-time (iso8601-parse "2023-02-01T12:00Z"))))))
+
 (ert-deftest triples-readme ()
   (triples-test-with-temp-db
    (triples-add-schema db 'person
