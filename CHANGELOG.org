@@ -2,7 +2,7 @@ TITLE: Changelog for the triples module for GNU Emacs.
 
 * 0.2
 - Create a default database to encourage a shared triple database.  Add information on why this is an interesting idea in the README.
-- Add support for backups of databases via =triples-backup=.
+- Add support for backups of databases via =triples-backup=, and a simple way to have a sane and shared backups created with the new =triples-backups= module.
 
 * 0.1
 - This is the initial version that contained basic triple functionality, and was integrated into GNU ELPA.
