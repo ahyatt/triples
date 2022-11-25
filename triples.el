@@ -54,16 +54,6 @@ It is invoked to make backups.")
   "The default filename triples database. If no database is
 specified, this file is used.")
 
-(defconst triples-backup-files-to-keep 3
-  "How many backups of database to keep.
-Backups are stored in the default location, or the location
-specified in `backup-directory-alist'")
-
-(defconst triples-backup-strategy 'triples-backup-strategy-daily
-  "Function that controls when backups are created.
-Each function is called when a change happens, with no arguments,
-and returns a non-nil value if a backup should be created.")
-
 (defun triples-connect (&optional file)
   "Connect to the database FILE and make sure it is populated.
 If FILE is nil, use `triples-default-database-filename'."
@@ -105,7 +95,7 @@ If FILE is nil, use `triples-default-database-filename'."
     ('builtin (sqlite-close db))
     ('emacsql (emacsql-close db))))
 
-(defun triples-backup (db filename)
+(defun triples-backup (db filename num-to-keep)
   "Perform a backup of DB, located at path FILENAME.
 This uses the same backup location and names as configured in
 variables such as `backup-directory-alist'. Due to the fact that
@@ -116,7 +106,8 @@ Th DB argument is currently unused, but may be used in the future
 if emacs's native sqlite gains a backup feature.
 
 This also will clear excess backup files, according to
-`triples-backup-files-to-keep'."
+NUM-TO-KEEP, which specifies how many backup files at max should
+exist at any time. Older backups are the ones that are deleted."
   (call-process (pcase triples-sqlite-interface
                   ('builtin triples-sqlite-executable)
                   ('emacsql emacsql-sqlite-executable))
@@ -127,15 +118,8 @@ This also will clear excess backup files, according to
   (let ((backup-files (file-backup-file-names (expand-file-name filename))))
     (cl-loop for backup-file in (cl-subseq
                                  backup-files
-                                 (min triples-backup-files-to-keep
-                                      (length backup-files)))
+                                 (min num-to-keep (length backup-files)))
              do (delete-file backup-file))))
-
-(defun triples-backup-strategy-daily (last-update)
-  "Backup strategy to create a change daily at most.
-LAST-UPDATE is the time of the last update."
-  (>= (/ (time-convert (time-subtract (current-time) last-update) 'integer) 86400)
-      1))
 
 (defun triples--decolon (sym)
   "Remove colon from SYM."
