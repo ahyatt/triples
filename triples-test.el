@@ -155,6 +155,12 @@ easily debug into it.")
                      (triples-db-select-predicate-object-fragment db 'pred/foo "whole"))
              '((sub1 pred/foo "a whole phrase"))))))
 
+(triples-deftest triples-test-subjects-with-predicate-object ()
+  (triples-test-with-temp-db
+    (triples-db-insert db 'sub1 'pred/foo "bar")
+    (should (equal (triples-subjects-with-predicate-object db 'pred/foo "bar")
+                   '(sub1)))))
+
 ;; After this we don't bother testing both with emacsql and the builtin sqlite,
 ;; since if the functions tested above work, it should also work for both.
 
