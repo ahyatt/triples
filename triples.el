@@ -534,11 +534,11 @@ TYPE-VALS-CONS is a list of conses, combining a type and a plist of values."
 
 (defun triples-subjects-with-predicate-object (db cpred obj)
   "Return all subjects in DB with CPRED equal to OBJ."
-  (triples-db-select db nil cpred obj))
+  (mapcar #'car (triples-db-select db nil cpred obj)))
 
 (defun triples-subjects-of-type (db type)
   "Return a list of all subjects with a particular TYPE in DB."
-  (mapcar #'car (triples-subjects-with-predicate-object db 'base/type type)))
+  (triples-subjects-with-predicate-object db 'base/type type))
 
 (defun triples-combined-to-type-and-prop (combined)
   "Return cons of type and prop that form the COMBINED normal representation.
