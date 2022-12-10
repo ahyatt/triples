@@ -126,7 +126,7 @@ with PROPERTIES. This is a low-level function that bypasses our
 normal schema checks, so should not be called from client programs."
   (unless (symbolp predicate)
     (error "Predicates in triples must always be symbols"))
-  (unless (plistp properties)
+  (when (and (fboundp 'plistp) (not (plistp properties)))
     (error "Properties stored must always be plists"))
   (pcase triples-sqlite-interface
     ('builtin 
