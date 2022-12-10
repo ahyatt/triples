@@ -1,5 +1,8 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
+* 0.1.2
+- Bugfix release to remove backward compatibility with pre-Emacs 29 versions.
+  
 * 0.1.1
  - Bugfix release to fix =triples-subject-with-predicate-object=.
 

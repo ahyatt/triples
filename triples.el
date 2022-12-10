@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/triples
 ;; Package-Requires: ((seq "2.0") (emacs "25"))
 ;; Keywords: triples, kg, data, sqlite
-;; Version: 0.1.1
+;; Version: 0.1.2
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 2 of the
