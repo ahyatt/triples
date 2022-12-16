@@ -64,7 +64,8 @@ FILENAME is also necessary for the backup operation."
        :error))
     (when (funcall (or (symbol-function strategy-func) triples-backups-strategy-daily)
                  (time-convert (plist-get backup-info :last-update-time) t))
-        (triples-backup db filename (plist-get backup-info :num-to-keep)))))
+      (triples-backup db filename (plist-get backup-info :num-to-keep))
+      (apply #'triples-set-type db 'database 'backup (plist-put backup-info :last-update-time (time-convert (current-time) 'integer))))))
 
 (defun triples-backups-strategy-every-change (_)
   "Backup strategy to do a backup on each change."
