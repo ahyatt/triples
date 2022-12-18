@@ -345,6 +345,21 @@ easily debug into it.")
                    (sqlite-select db "SELECT COUNT(*) FROM triples WHERE subject = ? AND predicate = 'base/type' AND object = 'marker'"
                                   (list (triples-standardize-val "foo")))))))
 
+(ert-deftest triples-move-subject ()
+  (triples-test-with-temp-db
+   (triples-add-schema db 'named '(name))
+   (triples-add-schema db 'friend '(id))
+   (triples-set-subject db 123 '(named :name "Ada Lovelace"))
+   (triples-set-subject db 456 '(named :name "Michael Faraday")
+                        '(friend :id 123))
+   (triples-set-subject db 987 '(named :name "To Be Deleted"))
+   (should-error (triples-move-subject db 123 987))
+   (triples-delete-subject db 987)
+   (triples-move-subject db 123 987)
+   (should-not (triples-get-subject db 123))
+   (should (equal "Ada Lovelace" (plist-get (triples-get-subject db 987) :named/name)))
+   (should (equal 987 (plist-get (triples-get-subject db 456) :friend/id)))))
+
 (ert-deftest triples-readme ()
   (triples-test-with-temp-db
    (triples-add-schema db 'person
