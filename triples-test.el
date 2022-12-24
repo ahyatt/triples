@@ -54,7 +54,7 @@ easily debug into it.")
     (sql-sqlite (format "*schema test db SQL %s*" triples-test-db-file))))
 
 (defmacro triples-deftest (name _ &rest body)
-  "Create a test exercizing variants of `triples-sqlite-interface'."
+  "Create a test exercising variants of `triples-sqlite-interface'."
   (declare (debug t) (indent 2))
   (let ((builtin-name (intern (format "%s-builtin" name)))
         (emacsql-name (intern (format "%s-emacsql" name))))
