@@ -300,6 +300,32 @@ object, properties to retrieve or nil for *."
                                  (when properties `((= properties ,(intern (format "$s%d" (cl-incf n)))))))))))
               (seq-filter #'identity (list subject predicate object properties)))))))
 
+(defun triples-move-subject (db old-subject new-subject)
+  "Replace all instance in DB of OLD-SUBJECT to NEW-SUBJECT.
+Any references to OLD-SUBJECT as an object are also replaced.
+This will throw an error if there is an existing subject
+NEW-SUBJECT with at least one equal property (such as type
+markers). But if there are no commonalities, the OLD-SUBJECT is
+merged into NEW-SUBJECT."
+  (pcase triples-sqlite-interface
+    ('builtin
+     (condition-case err
+         (progn
+           (sqlite-transaction db)
+           (sqlite-execute db "UPDATE triples SET subject = ? WHERE subject = ?"
+                           (list (triples-standardize-val new-subject) (triples-standardize-val old-subject)))
+           (sqlite-execute db "UPDATE triples SET object = ? WHERE object = ?"
+                           (list (triples-standardize-val new-subject) (triples-standardize-val old-subject)))
+           (sqlite-commit db))
+       (error (sqlite-rollback db)
+              (signal 'error err))))
+    ('emacsql
+     (emacsql-with-transaction db
+         (emacsql db [:update triples :set (= subject $s1) :where (= subject $s2)]
+                  new-subject old-subject)
+         (emacsql db [:update triples :set (= object $s1) :where (= object $s2)]
+                  new-subject old-subject)))))
+
 ;; Code after this point should not call sqlite or emacsql directly. If any more
 ;; calls are needed, put them in a defun, make it work for sqlite and emacsql,
 ;; and put them above.

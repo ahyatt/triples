@@ -3,6 +3,7 @@ TITLE: Changelog for the triples module for GNU Emacs.
 * 0.2
 - Create a default database to encourage a shared triple database.  Add information on why this is an interesting idea in the README.
 - Add support for backups of databases via =triples-backup=, and a simple way to have a sane and shared backups created with the new =triples-backups= module.
+- Add =triples-move-subject= which will move both a subject as well as reference to it.
 * 0.1.2
 - Bugfix release to remove backward compatibility with pre-Emacs 29 versions.  
 * 0.1.1
