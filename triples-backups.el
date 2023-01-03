@@ -71,6 +71,10 @@ FILENAME is also necessary for the backup operation."
   "Backup strategy to do a backup on each change."
   t)
 
+(defun triples-backups-strategy-never (_)
+  "Backup strategy to never do a backup."
+  nil)
+
 (defun triples-backups-strategy-daily (last-update)
   "Backup strategy to create a change daily at most.
 LAST-UPDATE is the time of the last update."
