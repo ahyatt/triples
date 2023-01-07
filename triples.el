@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/triples
 ;; Package-Requires: ((seq "2.0") (emacs "25"))
 ;; Keywords: triples, kg, data, sqlite
-;; Version: 0.2.1
+;; Version: 0.2.2
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 2 of the
@@ -441,16 +441,17 @@ The transaction will abort if an error is thrown."
 
 (defun triples--with-transaction (db body-fun)
   (pcase triples-sqlite-interface
-    ('builtin  (condition-case nil
-                   (progn
-                     (sqlite-transaction db)
-                     (funcall body-fun)
-                     (sqlite-commit db))
-                 (error (sqlite-rollback db))))
-    ('emacsql (funcall (triples--eval-when-fboundp emacsql-with-transaction
-                         (lambda (db body-fun)
-                           (emacsql-with-transaction db (funcall body-fun))))
-                       db body-fun))))
+      ('builtin  (condition-case err
+                     (progn
+                       (sqlite-transaction db)
+                       (funcall body-fun)
+                       (sqlite-commit db))
+                   (error (sqlite-rollback db)
+                          (signal (car err) (cdr err)))))
+      ('emacsql (funcall (triples--eval-when-fboundp emacsql-with-transaction
+                           (lambda (db body-fun)
+                             (emacsql-with-transaction db (funcall body-fun))))
+                         db body-fun))))
 
 (defun triples-set-types (db subject &rest combined-props)
   "Set all data for types in COMBINED-PROPS in DB for SUBJECT.
