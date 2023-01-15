@@ -105,17 +105,21 @@ work, therefore this function must be called instead.
 Th DB argument is currently unused, but may be used in the future
 if emacs's native sqlite gains a backup feature.
 
+FILENAME can be nil, if so `triples-default-database-filename'
+will be used.
+
 This also will clear excess backup files, according to
 NUM-TO-KEEP, which specifies how many backup files at max should
 exist at any time. Older backups are the ones that are deleted."
-  (call-process (pcase triples-sqlite-interface
-                  ('builtin triples-sqlite-executable)
-                  ('emacsql emacsql-sqlite-executable))
-                nil nil nil (expand-file-name filename)
-                (format ".backup '%s'" (expand-file-name
-                                        (car (find-backup-file-name
-                                              (expand-file-name filename))))))
-  (let ((backup-files (file-backup-file-names (expand-file-name filename))))
+  (let ((filename (expand-file-name (or filename triples-default-database-filename))))
+    (call-process (pcase triples-sqlite-interface
+                    ('builtin triples-sqlite-executable)
+                    ('emacsql emacsql-sqlite-executable))
+                  nil nil nil filename
+                  (format ".backup '%s'" (expand-file-name
+                                          (car (find-backup-file-name
+                                                filename))))))
+  (let ((backup-files (file-backup-file-names filename)))
     (cl-loop for backup-file in (cl-subseq
                                  backup-files
                                  (min num-to-keep (length backup-files)))
