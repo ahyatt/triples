@@ -1,5 +1,8 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
+* 0.2.3
+- Allow =nil= for =filename= arguments in the backup functions.  This will default to backing up the default database.
+- Fix issue with fallback for bad backup strategies.
 * 0.2.2
 - Fix error behavior using Emacs builtin sqlite.  Now error is rethrown instead of swallowed.
 * 0.2.1
