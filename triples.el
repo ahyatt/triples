@@ -1,10 +1,10 @@
-;;; triples.el --- A flexible triple-based database for us in apps.  -*- lexical-binding: t; -*-
+;;; triples.el --- A flexible triple-based database for use in apps  -*- lexical-binding: t; -*-
 
 ;; Copyright (c) 2022  Free Software Foundation, Inc.
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/triples
-;; Package-Requires: ((seq "2.0") (emacs "25"))
+;; Package-Requires: ((seq "2.0") (emacs "28.1"))
 ;; Keywords: triples, kg, data, sqlite
 ;; Version: 0.2.2
 ;; This program is free software; you can redistribute it and/or
