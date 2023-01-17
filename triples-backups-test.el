@@ -60,6 +60,9 @@
       (should-not backup-called)
       (triples-backups-setup db 3 'always)
       (triples-backups-maybe-backup db filename)
+      (should backup-called)
+      (triples-backups-setup db 3 'unknown)
+      (triples-backups-maybe-backup db filename)
       (should backup-called))))
 
 (provide 'triples-backups-test)

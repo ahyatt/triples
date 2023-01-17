@@ -1,12 +1,12 @@
-;;; triples.el --- A flexible triple-based database for us in apps.  -*- lexical-binding: t; -*-
+;;; triples.el --- A flexible triple-based database for use in apps  -*- lexical-binding: t; -*-
 
 ;; Copyright (c) 2022  Free Software Foundation, Inc.
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/triples
-;; Package-Requires: ((seq "2.0") (emacs "25"))
+;; Package-Requires: ((seq "2.0") (emacs "28.1"))
 ;; Keywords: triples, kg, data, sqlite
-;; Version: 0.2
+;; Version: 0.2.3
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 2 of the
@@ -105,17 +105,21 @@ work, therefore this function must be called instead.
 Th DB argument is currently unused, but may be used in the future
 if emacs's native sqlite gains a backup feature.
 
+FILENAME can be nil, if so `triples-default-database-filename'
+will be used.
+
 This also will clear excess backup files, according to
 NUM-TO-KEEP, which specifies how many backup files at max should
 exist at any time. Older backups are the ones that are deleted."
-  (call-process (pcase triples-sqlite-interface
-                  ('builtin triples-sqlite-executable)
-                  ('emacsql emacsql-sqlite-executable))
-                nil nil nil (expand-file-name filename)
-                (format ".backup '%s'" (expand-file-name
-                                        (car (find-backup-file-name
-                                              (expand-file-name filename))))))
-  (let ((backup-files (file-backup-file-names (expand-file-name filename))))
+  (let ((filename (expand-file-name (or filename triples-default-database-filename))))
+    (call-process (pcase triples-sqlite-interface
+                    ('builtin triples-sqlite-executable)
+                    ('emacsql emacsql-sqlite-executable))
+                  nil nil nil filename
+                  (format ".backup '%s'" (expand-file-name
+                                          (car (find-backup-file-name
+                                                filename))))))
+  (let ((backup-files (file-backup-file-names filename)))
     (cl-loop for backup-file in (cl-subseq
                                  backup-files
                                  (min num-to-keep (length backup-files)))
@@ -162,7 +166,7 @@ with PROPERTIES. This is a low-level function that bypasses our
 normal schema checks, so should not be called from client programs."
   (unless (symbolp predicate)
     (error "Predicates in triples must always be symbols"))
-  (unless (plistp properties)
+  (when (and (fboundp 'plistp) (not (plistp properties)))
     (error "Properties stored must always be plists"))
   (pcase triples-sqlite-interface
     ('builtin 
@@ -441,16 +445,17 @@ The transaction will abort if an error is thrown."
 
 (defun triples--with-transaction (db body-fun)
   (pcase triples-sqlite-interface
-    ('builtin  (condition-case nil
-                   (progn
-                     (sqlite-transaction db)
-                     (funcall body-fun)
-                     (sqlite-commit db))
-                 (error (sqlite-rollback db))))
-    ('emacsql (funcall (triples--eval-when-fboundp emacsql-with-transaction
-                         (lambda (db body-fun)
-                           (emacsql-with-transaction db (funcall body-fun))))
-                       db body-fun))))
+      ('builtin  (condition-case err
+                     (progn
+                       (sqlite-transaction db)
+                       (funcall body-fun)
+                       (sqlite-commit db))
+                   (error (sqlite-rollback db)
+                          (signal (car err) (cdr err)))))
+      ('emacsql (funcall (triples--eval-when-fboundp emacsql-with-transaction
+                           (lambda (db body-fun)
+                             (emacsql-with-transaction db (funcall body-fun))))
+                         db body-fun))))
 
 (defun triples-set-types (db subject &rest combined-props)
   "Set all data for types in COMBINED-PROPS in DB for SUBJECT.
