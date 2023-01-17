@@ -1,5 +1,7 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
+* 0.2.4
+- Move the =CHANGELOG.org= file to =NEWS.org= so the changes show up in GNU ELPA.
 * 0.2.3
 - Allow =nil= for =filename= arguments in the backup functions.  This will default to backing up the default database.
 - Fix issue with fallback for bad backup strategies.
