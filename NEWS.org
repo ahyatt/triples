@@ -1,5 +1,7 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
+* 0.2.5
+- Fix bug where backing up a =nil= filename resulted in an error.
 * 0.2.4
 - Move the =CHANGELOG.org= file to =NEWS.org= so the changes show up in GNU ELPA.
 * 0.2.3

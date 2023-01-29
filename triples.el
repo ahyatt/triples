@@ -118,12 +118,12 @@ exist at any time. Older backups are the ones that are deleted."
                   nil nil nil filename
                   (format ".backup '%s'" (expand-file-name
                                           (car (find-backup-file-name
-                                                filename))))))
-  (let ((backup-files (file-backup-file-names filename)))
-    (cl-loop for backup-file in (cl-subseq
-                                 backup-files
-                                 (min num-to-keep (length backup-files)))
-             do (delete-file backup-file))))
+                                                filename)))))
+    (let ((backup-files (file-backup-file-names filename)))
+      (cl-loop for backup-file in (cl-subseq
+                                   backup-files
+                                   (min num-to-keep (length backup-files)))
+               do (delete-file backup-file)))))
 
 (defun triples--decolon (sym)
   "Remove colon from SYM."
