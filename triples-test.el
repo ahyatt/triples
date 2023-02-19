@@ -296,6 +296,16 @@ easily debug into it.")
    (should (equal '(:name ("Name"))
                   (triples-get-type db "foo" 'named)))))
 
+(ert-deftest triples-vector ()
+  (triples-test-with-temp-db
+   (triples-add-schema db 'named 'name)
+   (triples-add-schema db 'embedding '(embedding :base/unique t :base/type vector))
+   (triples-set-type db "foo" 'named :name '("Name"))
+   (triples-set-type db "foo" 'embedding :embedding [1 2 3 4 5])
+   (should (equal '(:embedding [1 2 3 4 5])
+                  (triples-get-type db "foo" 'embedding)))
+   (should-error (triples-set-type db "foo" 'embedding :embedding '(1 2 3)))))
+
 (ert-deftest triples-reversed ()
   (triples-test-with-temp-db
    (triples-add-schema db 'named
