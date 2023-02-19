@@ -40,7 +40,7 @@ easily debug into it.")
   (declare (indent 0) (debug t))
   `(let ((db-file (make-temp-file "triples-test")))
      (unwind-protect
-         (progn 
+         (progn
            (let ((db (triples-connect db-file)))
              (setq triples-test-db-file db-file)
              ,@body
@@ -98,7 +98,7 @@ easily debug into it.")
     ;; Test that we can have symbol subject and objects.
     (triples-db-insert db 'sub 'pred 'obj)
     (should (equal
-             (mapcar (lambda (row) (seq-take row 3)) (triples-db-select db 'sub))               
+             (mapcar (lambda (row) (seq-take row 3)) (triples-db-select db 'sub))
              '((sub pred obj))))
     ;; Test that properties aren't strings. They happen to be stored
     ;; differently for each system due to differences in how the inserting
@@ -317,7 +317,7 @@ easily debug into it.")
    (triples-set-type db "foo" 'named :name "My Name Is Fred Foo")
    (triples-set-type db "bar" 'named :name "My Name Is Betty Bar")
    (should (equal
-            (triples-test-list-sort 
+            (triples-test-list-sort
              '(("bar" named/name "My Name Is Betty Bar" nil)
                ("foo" named/name "My Name Is Fred Foo" nil)))
             (triples-test-list-sort

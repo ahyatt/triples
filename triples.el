@@ -169,7 +169,7 @@ normal schema checks, so should not be called from client programs."
   (when (and (fboundp 'plistp) (not (plistp properties)))
     (error "Properties stored must always be plists"))
   (pcase triples-sqlite-interface
-    ('builtin 
+    ('builtin
      (sqlite-execute db "REPLACE INTO triples VALUES (?, ?, ?, ?)"
                      (list (triples-standardize-val subject)
                            (triples-standardize-val (triples--decolon predicate))
@@ -224,7 +224,7 @@ all to nil, everything will be deleted, so be careful!"
               (apply #'vector
                      (append '(:delete :from triples)
                              (when (or subject predicate object properties)
-                               (triples--emacsql-andify 
+                               (triples--emacsql-andify
                                 (append
                                  '(:where)
                                  (when subject `((= subject ,(intern (format "$s%d" (cl-incf n))))))
@@ -295,7 +295,7 @@ object, properties to retrieve or nil for *."
                                ,(if selector (apply #'vector selector) '*)
                                :from triples)
                              (when (or subject predicate object properties)
-                               (triples--emacsql-andify 
+                               (triples--emacsql-andify
                                 (append
                                  '(:where)
                                  (when subject `((= subject ,(intern (format "$s%d" (cl-incf n))))))
