@@ -552,7 +552,9 @@ TYPE-VALS-CONS is a list of conses, combining a type and a plist of values."
           type-vals-cons)))
 
 (defun triples-delete-subject (db subject)
-  "Delete all data in DB associated with SUBJECT."
+  "Delete all data in DB associated with SUBJECT.
+This usually should not be called, it's better to just delete
+data you own with `triples-remove-type'."
   (triples-db-delete db subject))
 
 (defun triples-search (db cpred text)
