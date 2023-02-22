@@ -296,6 +296,16 @@ easily debug into it.")
    (should (equal '(:name ("Name"))
                   (triples-get-type db "foo" 'named)))))
 
+(ert-deftest triples-store-and-retrieve ()
+  (triples-test-with-temp-db
+    (triples-add-schema db 'text '(text :base/unique t))
+    (let ((text "Foo\nBar\tBaz \"Quoted\" "))
+      (triples-set-type db "foo" 'text :text text)
+      (let ((retrieved (triples-get-type db "foo" 'text)))
+        (should (equal `(:text ,text) retrieved))
+        (triples-set-type db "foo" 'text retrieved)
+        (should (equal `(:text ,text) (triples-get-type db "foo" 'text)))))))
+
 (ert-deftest triples-vector ()
   (triples-test-with-temp-db
    (triples-add-schema db 'named 'name)

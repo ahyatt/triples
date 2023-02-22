@@ -138,7 +138,9 @@ exist at any time. Older backups are the ones that are deleted."
 This is done to have compatibility with the way emacsql stores
 values. Turn a symbol into a string as well, but not a quoted
 one, because sqlite cannot handle symbols."
-  (let ((print-escape-control-characters t))
+  ;; Do not print control characters escaped - we want to get things out exactly
+  ;; as we put them in.
+  (let ((print-escape-control-characters nil))
     (if val
         (format "%S" val)
       ;; Just to save a bit of space, let's use "()" instead of "null", which is
@@ -150,13 +152,9 @@ one, because sqlite cannot handle symbols."
 This imitates the way emacsql returns items, with strings
 becoming either symbols, lists, or strings depending on whether
 the string itself is wrapped in quotes."
-  (if (and (stringp result)
-           (string-prefix-p "\"" result)
-           (string-suffix-p "\"" result))
-      (string-remove-suffix "\"" (string-remove-prefix "\"" result))
-    (if (numberp result)
+  (if (numberp result)
         result
-      (read result))))
+      (read result)))
 
 (defun triples-db-insert (db subject predicate object &optional properties)
   "Insert triple to DB: SUBJECT, PREDICATE, OBJECT with PROPERTIES.
