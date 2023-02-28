@@ -380,6 +380,12 @@ easily debug into it.")
    (should (equal "Ada Lovelace" (plist-get (triples-get-subject db 987) :named/name)))
    (should (equal 987 (plist-get (triples-get-subject db 456) :friend/id)))))
 
+(ert-deftest triples-test-subjects-with-predicate-object-unique-subject ()
+  (triples-test-with-temp-db
+    (triples-add-schema db 'named '(name))
+    (triples-set-subject db 123 '(named :name ("Foo" "Foo")))
+    (should (= 1 (length (triples-subjects-with-predicate-object db 'named/name "Foo"))))))
+
 (ert-deftest triples-readme ()
   (triples-test-with-temp-db
    (triples-add-schema db 'person

@@ -564,8 +564,9 @@ data you own with `triples-remove-type'."
   (triples-db-select db nil cpred))
 
 (defun triples-subjects-with-predicate-object (db cpred obj)
-  "Return all subjects in DB with CPRED equal to OBJ."
-  (mapcar #'car (triples-db-select db nil cpred obj)))
+  "Return all subjects in DB with CPRED equal to OBJ.
+Subjects will not be returned more than once."
+  (seq-uniq (mapcar #'car (triples-db-select db nil cpred obj))))
 
 (defun triples-subjects-of-type (db type)
   "Return a list of all subjects with a particular TYPE in DB."

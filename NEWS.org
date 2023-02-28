@@ -1,5 +1,7 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
+* 0.2.6
+- Fix bug where the functions =triples-subjects-with-predicate-object= could return the same subject multiple times.
 * 0.2.5
 - Fix bug where backing up a =nil= filename resulted in an error.
 - Fix bug where strings are wrongly escapified, distoring text especially when repeatedly saved.
