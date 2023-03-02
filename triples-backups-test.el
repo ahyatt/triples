@@ -23,6 +23,7 @@
 ;;; Code:
 (require 'ert)
 (require 'triples-backups)
+(require 'iso8601)
 
 (ert-deftest triples-backups-strategy-daily ()
   (cl-letf (((symbol-function 'current-time)
