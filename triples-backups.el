@@ -61,11 +61,11 @@ default to the standard triple database given in
     (unless (fboundp strategy-func)
       (display-warning
        'triples
-       (format "Triples backup strategy %s not found, defaulting to `triples-backups-strategy-daily'" 
+       (format "Triples backup strategy %s not found, defaulting to `triples-backups-strategy-daily'"
                strategy-func)
        :error))
     (when (funcall (or (symbol-function strategy-func) #'triples-backups-strategy-daily)
-                   (time-convert (plist-get backup-info :last-update-time) t))
+                   (plist-get backup-info :last-update-time))
       (triples-backup db filename (plist-get backup-info :num-to-keep))
       (apply #'triples-set-type db 'database 'backup (plist-put backup-info :last-update-time (time-convert (current-time) 'integer))))))
 
@@ -80,15 +80,14 @@ default to the standard triple database given in
 (defun triples-backups-strategy-daily (last-update)
   "Backup strategy to create a change daily at most.
 LAST-UPDATE is the time of the last update."
-  (>= (/ (time-convert (time-subtract (current-time) last-update) 'integer) 86400)
+  (>= (/ (- (float-time (current-time)) (float-time last-update)) 86400)
       1))
 
 (defun triples-backups-strategy-weekly (last-update)
   "Backup strategy to create a change daily at most.
 LAST-UPDATE is the time of the last update."
-  (>= (/ (time-convert (time-subtract (current-time) last-update) 'integer) 86400)
+  (>= (/ (- (float-time (current-time)) (float-time last-update)) 86400)
       7))
 
 (provide 'triples-backups)
 ;;; Code:
-
