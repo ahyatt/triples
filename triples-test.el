@@ -220,7 +220,9 @@ easily debug into it.")
   (should (triples-test-op-equals
            (triples--set-type-op "Bert" 'named
                                  '(:name "Bertholomew The Second"
-                                         :alias ("Bert" "Berty")))
+                                         :alias ("Bert" "Berty"))
+                                 '((name :base/type string :base/unique t)
+                                   (alias :base/type string :base/unique nil)))
            '(replace-subject-type
              .
              (("Bert" base/type named)
@@ -229,15 +231,18 @@ easily debug into it.")
               ("Bert" named/alias "Berty" (:index 1)))))))
 
 (ert-deftest triples-schema-compliant ()
-  (triples-test-with-temp-db
-    (triples-add-schema db 'named
-                        '(name :base/unique t :base/type string)
-                        'alternate-names)
-    (triples-set-type db "foo" 'named :name "name")
-    (should (triples-verify-schema-compliant db '(("foo" named/name "bar"))))
-    (should-error (triples-verify-schema-compliant db '(("foo" named/name 5))))
-    (should-error (triples-verify-schema-compliant db '(("foo" named/name "bar" (:index 0)))))
-    (should (triples-verify-schema-compliant db '(("foo" named/alternate-names "bar" (:index 0)))))))
+  (let ((pal '((named/name :base/type string :base/unique t)
+               (named/alternate-names :base/type string :base/unique nil)
+               ;; Alias doesn't specify base/unique or base/type, so anything is fine.
+               (named/alias))))
+    (should (triples-verify-schema-compliant '(("foo" named/name "bar")) pal))
+    (should-error (triples-verify-schema-compliant '(("foo" named/name 5)) pal))
+    (should-error (triples-verify-schema-compliant '(("foo" named/name "bar" (:index 0))) pal))
+    (should (triples-verify-schema-compliant '(("foo" named/alternate-names "bar" (:index 0))) pal))
+    (should-error (triples-verify-schema-compliant '(("foo" named/alternate-names "bar" nil)) pal))
+    (should (triples-verify-schema-compliant '(("foo" named/alias "bar" nil)) pal))
+    (should (triples-verify-schema-compliant '(("foo" named/alias 5 nil)) pal))
+    (should (triples-verify-schema-compliant '(("foo" named/alias 5 (:index 0))) pal))))
 
 (defun triples-test-plist-sort (plist)
   "Sort PLIST in a standard way, for comparison."
@@ -268,7 +273,7 @@ easily debug into it.")
   (triples-test-with-temp-db
     (triples-add-schema db 'named
                         '(name :base/unique t))
-    (triples-add-schema db 'positioned '(position :/base/unique t))
+    (triples-add-schema db 'positioned '(position :base/unique t))
     (should-not (triples-get-subject db "foo"))
     (triples-set-subject db "foo"
                          '(named :name "bar")
@@ -281,7 +286,7 @@ easily debug into it.")
 (ert-deftest triples-set-types ()
   (triples-test-with-temp-db
     (triples-add-schema db 'named
-                        '(name :/base/unique t)
+                        '(name :base/unique t)
                        'alias)
     (triples-add-schema db 'reachable 'phone)
     (triples-set-type db "foo" 'named :name "Name" :alias '("alias1" "alias2"))
@@ -315,6 +320,18 @@ easily debug into it.")
    (should (equal '(:embedding [1 2 3 4 5])
                   (triples-get-type db "foo" 'embedding)))
    (should-error (triples-set-type db "foo" 'embedding :embedding '(1 2 3)))))
+
+(ert-deftest triples-cons ()
+  (triples-test-with-temp-db
+   (triples-add-schema db 'data '(data :base/unique t :base/type cons))
+   (triples-set-type db "foo" 'data :data '(a (b c)))
+   (should (equal '(:data (a (b c)))
+                  (triples-get-type db "foo" 'data)))
+   (should (= 1 (length (triples-db-select db nil 'data/data))))
+   ;; Let's also make sure if we store it as a straight list triples doesn't get
+   ;; confused and try to store it as separate rows in the db.
+   (triples-set-type db "foo" 'data :data '(a b c))
+   (should (= 1 (length (triples-db-select db nil 'data/data))))))
 
 (ert-deftest triples-reversed ()
   (triples-test-with-temp-db
@@ -367,8 +384,8 @@ easily debug into it.")
 
 (ert-deftest triples-move-subject ()
   (triples-test-with-temp-db
-   (triples-add-schema db 'named '(name))
-   (triples-add-schema db 'friend '(id))
+   (triples-add-schema db 'named '(name :base/unique t))
+   (triples-add-schema db 'friend '(id :base/unique t))
    (triples-set-subject db 123 '(named :name "Ada Lovelace"))
    (triples-set-subject db 456 '(named :name "Michael Faraday")
                         '(friend :id 123))

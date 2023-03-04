@@ -379,12 +379,14 @@ merged into NEW-SUBJECT."
   (mapcar #'car
           (triples-db-select db type 'schema/property nil nil '(object))))
 
-(defun triples-verify-schema-compliant (db triples)
-  "Error if TRIPLES is not compliant with schema in DB."
+(defun triples-verify-schema-compliant (triples prop-schema-alist)
+  "Error if TRIPLES is not compliant with schema in PROP-SCHEMA-ALIST.
+PROP-SCHEMA-ALIST is an alist of the relevant properties to the
+data stored, in combined type/property form, and their schema
+definitions."
   (mapc (lambda (triple)
-          (pcase-let ((`(,type . ,prop) (triples-combined-to-type-and-prop (nth 1 triple))))
-            (unless (or (eq type 'base)
-                        (triples-db-select db type 'schema/property prop nil))
+          (pcase-let ((`(,type . ,_) (triples-combined-to-type-and-prop (nth 1 triple))))
+            (unless (or (eq type 'base) (assoc (nth 1 triple) prop-schema-alist))
               (error "Property %s not found in schema" (nth 1 triple)))))
         triples)
   (mapc (lambda (triple)
@@ -393,7 +395,7 @@ merged into NEW-SUBJECT."
                                                           (triples--decolon pred-prop)))))
                                  (if (fboundp f)
                                      (funcall f val triple))))
-                             (triples-properties-for-predicate db (nth 1 triple)))) triples))
+                               (cdr (assoc (nth 1 triple) prop-schema-alist)))) triples))
 
 (defun triples-add-schema (db type &rest props)
   "Add schema for TYPE and its PROPS to DB."
@@ -424,8 +426,21 @@ them."
 (defun triples-set-type (db subject type &rest properties)
   "Create operation to replace PROPERTIES for TYPE for SUBJECT in DB.
 PROPERTIES is a plist of properties, without TYPE prefixes."
-  (let ((op (triples--set-type-op subject type properties)))
-    (triples-verify-schema-compliant db (cdr op))
+  (let* ((prop-schema-alist
+          (mapcar (lambda (prop)
+                    (cons (triples--decolon prop)
+                          (triples-properties-for-predicate
+                           db
+                           (triples-type-and-prop-to-combined type prop))))
+                  (triples--plist-mapcar (lambda (k _) k) properties)))
+         (op (triples--set-type-op subject type properties prop-schema-alist)))
+    (triples-verify-schema-compliant
+     (cdr op)
+     ;; triples-verify-schema-compliant can act on triples from many types, so
+     ;; we have to include the type information in our schema property alist.
+     (mapcar (lambda (c)
+               (cons (triples-type-and-prop-to-combined type (car c))
+                     (cdr c))) prop-schema-alist))
     (triples--add db op)))
 
 (defmacro triples-with-transaction (db &rest body)
@@ -473,21 +488,27 @@ given in the COMBINED-PROPS will be removed."
       (cl-loop for k being the hash-keys of type-to-plist using (hash-values v)
                do (apply #'triples-set-type db subject k v)))))
 
-(defun triples--set-type-op (subject type properties)
+(defun triples--set-type-op (subject type properties type-schema)
   "Create operation to replace PROPERTIES for TYPE for SUBJECT.
-PROPERTIES is a plist of properties, without TYPE prefixes."
+PROPERTIES is a plist of properties, without TYPE prefixes.
+TYPE-SCHEMA is an alist of property symbols to their schema,
+which is necessary to understand when lists are supposed to be
+broken down into separate rows, and when to leave as is."
   (cons 'replace-subject-type
         (cons (list subject 'base/type type)
               (triples--plist-mapcan
                (lambda (prop v)
-                 (if (listp v)
+                 (let ((prop-schema (cdr (assoc (triples--decolon prop) type-schema))))
+                   (if (and
+                        (listp v)
+                        (not (plist-get prop-schema :base/unique)))
                      (cl-loop for e in v for i from 0
                               collect
                               (list subject
                                     (triples-type-and-prop-to-combined type prop)
                                     e
                                     (list :index i)))
-                   (list (list subject (triples-type-and-prop-to-combined type prop) v))))
+                   (list (list subject (triples-type-and-prop-to-combined type prop) v)))))
                properties))))
 
 (defun triples-get-type (db subject type)
