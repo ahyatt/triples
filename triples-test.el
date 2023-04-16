@@ -29,6 +29,7 @@
 (require 'seq)
 (require 'kv nil t)                     ;; May be absent.
 (require 'emacsql nil t)                ;; May be absent.
+(require 'emacsql-sqlite nil t)         ;; May be absent.
 
 ;;; Code:
 
@@ -154,19 +155,40 @@ easily debug into it.")
                                                                    ('builtin nil)
                                                                    ('emacsql '(:t t))))))))))
 
-(triples-deftest triples-test-select-predicate-object-fragment ()
-  (triples-test-with-temp-db
-    (triples-db-insert db 'sub1 'pred/foo "a whole phrase")
-    (should (equal
-             (mapcar (lambda (row) (seq-take row 3))
-                     (triples-db-select-predicate-object-fragment db 'pred/foo "whole"))
-             '((sub1 pred/foo "a whole phrase"))))))
-
 (triples-deftest triples-test-subjects-with-predicate-object ()
   (triples-test-with-temp-db
     (triples-db-insert db 'sub1 'pred/foo "bar")
     (should (equal (triples-subjects-with-predicate-object db 'pred/foo "bar")
                    '(sub1)))))
+
+(triples-deftest triples-test-db-select-pred-op-strings ()
+  (triples-test-with-temp-db
+    (triples-add-schema db 'named '(name))
+    (triples-set-subject db 123 '(named :name ("Foo" "Foo")))
+    (should (= 2 (length (triples-db-select-pred-op db :named/name '= "Foo"))))
+    (should (= 2 (length (triples-db-select-pred-op db :named/name 'like "F%"))))
+    (should (= 1 (length (triples-db-select-pred-op db :named/name '= "Foo" '(:index 0)))))
+    (should (= 2 (length (triples-db-select-pred-op db :named/name '> "A"))))
+    (should (= 0 (length (triples-db-select-pred-op db :named/name '< "A"))))
+    (should (= 2 (length (triples-db-select-pred-op db :named/name '= "foo"))))))
+
+(triples-deftest triples-test-db-select-pred-op-int ()
+  (triples-test-with-temp-db
+    (triples-add-schema db 'person '(age :base/unique t :base/type integer))
+    (triples-set-subject db 123 '(person :age 20))
+    (triples-set-subject db 456 '(person :age 40))
+    (triples-set-subject db 789 '(person :age 60))
+    (should (= 2 (length (triples-db-select-pred-op db :person/age '> 20))))
+    (should (= 3 (length (triples-db-select-pred-op db :person/age '>= 20))))
+    (should (= 2 (length (triples-db-select-pred-op db :person/age '!= 20))))
+    (should (= 3 (length (triples-db-select-pred-op db :person/age '!= 30))))
+    (should (= 1 (length (triples-db-select-pred-op db :person/age '= 20))))
+    (should (= 2 (length (triples-db-select-pred-op db :person/age '< 60))))
+    (should (= 3 (length (triples-db-select-pred-op db :person/age '<= 60))))
+    (should (= 0 (length (triples-db-select-pred-op db :person/age '> 60))))
+    ;; This may seem duplicative, but if we are doing textwise comparison, then
+    ;; this will fail.
+    (should (= 0 (length (triples-db-select-pred-op db :person/age '> 1000))))))
 
 ;; After this we don't bother testing both with emacsql and the builtin sqlite,
 ;; since if the functions tested above work, it should also work for both.

@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/triples
 ;; Package-Requires: ((seq "2.0") (emacs "28.1"))
 ;; Keywords: triples, kg, data, sqlite
-;; Version: 0.2.6
+;; Version: 0.2.7
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 2 of the
@@ -242,6 +242,49 @@ all to nil, everything will be deleted, so be careful!"
     ('emacsql (emacsql db [:delete :from triples :where (= subject $s1) :and (like predicate $r2)]
                        subject (format "%s/%%" (triples--decolon pred-prefix))))))
 
+(defun triples-db-select-pred-op (db pred op val &optional properties)
+  "Select triples matching predicates with PRED having OP relation to VAL.
+OP is a comparison operator, and VAL is the value to compare. OP,
+the comparison operator, is a symbol for a standard numerical
+comparison such as `=', `!=', `>', or, when `val' is a strings,
+`like'.  All alphabetic comparison is case insensitive.
+
+If PROPERTIES is given, triples must match the given properties."
+  (unless (symbolp pred)
+    (error "Predicates in triples must always be symbols"))
+  (let ((pred (triples--decolon pred)))
+    (pcase triples-sqlite-interface
+      ('builtin
+       (mapcar (lambda (row) (mapcar #'triples-standardize-result row)) 
+               (sqlite-select
+                db
+                (concat "SELECT * FROM triples WHERE predicate = ? AND  "
+                        (if (numberp val)
+                            "CAST(object AS INTEGER) "
+                          "object COLLATE NOCASE ")
+                        (symbol-name op) " ?"
+                        (when properties " AND properties = ?"))
+                (append
+                 (list (triples-standardize-val pred)
+                       (triples-standardize-val val))
+                 (when properties (list (triples-standardize-val properties)))))))
+      ('emacsql
+       (emacsql db
+                (append
+                 [:select * :from triples :where (= predicate $s1) :and]
+                 (pcase op
+                   ('< [(< object $s2)])
+                   ('<= [(<= object $s2)])
+                   ('= [(= object $s2)])
+                   ('!= [(!= object $s2)])
+                   ('>= [(>= object $s2)])
+                   ('> [(> object $s2)])
+                   ('like [(like object $s2)]))
+                 (when (stringp val) [:collate :nocase])
+                 (when properties
+                   (list :and '(= properties $s3))))
+                pred val properties)))))
+
 (defun triples-db-select-pred-prefix (db subject pred-prefix)
   "Return rows matching SUBJECT and PRED-PREFIX."
   (pcase triples-sqlite-interface
@@ -251,16 +294,6 @@ all to nil, everything will be deleted, so be careful!"
                                (format "%s/%%" pred-prefix)))))
     ('emacsql (emacsql db [:select * :from triples :where (= subject $s1) :and (like predicate $r2)]
                        subject (format "%s/%%" pred-prefix)))))
-
-(defun triples-db-select-predicate-object-fragment (db predicate object-fragment)
-  "Return rows with PREDICATE and with OBJECT-FRAGMENT in object."
-  (pcase triples-sqlite-interface
-    ('builtin (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
-                      (sqlite-select db "SELECT * from triples WHERE predicate = ? AND object LIKE ?"
-                                     (list (triples-standardize-val predicate)
-                                           (format "%%%s%%" object-fragment)))))
-    ('emacsql (emacsql db [:select * :from triples :where (= predicate $s1) :and (like object $s2)]
-                       predicate (format "%%%s%%" object-fragment)))))
 
 (defun triples-db-select (db &optional subject predicate object properties selector)
   "Return rows matching SUBJECT, PREDICATE, OBJECT, PROPERTIES.
@@ -578,7 +611,7 @@ data you own with `triples-remove-type'."
 
 (defun triples-search (db cpred text)
   "Search DB for instances of combined property CPRED with TEXT."
-  (triples-db-select-predicate-object-fragment db cpred text))
+  (triples-db-select-pred-op db cpred 'like (format "%%%s%%" text)))
 
 (defun triples-with-predicate (db cpred)
   "Return all triples in DB with CPRED as its combined predicate."

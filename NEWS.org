@@ -1,5 +1,7 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
+* 0.2.7
+- Add new function =triples-db-select-pred-op=, which allows querying among predicates for objects with a certain relationship to values, replaces =triples-db-select-predicate-object-fragment=.
 * 0.2.6
 - Fix bug where the functions =triples-subjects-with-predicate-object= could return the same subject multiple times.
 - Fix bug where backups were causing messages about "obsolete timestamp" for some users on Emacs 28.2.
