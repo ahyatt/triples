@@ -191,40 +191,42 @@ easily debug into it.")
     (should (= 0 (length (triples-db-select-pred-op db :person/age '> 1000))))))
 
 (ert-deftest triples-test-builtin-emacsql-compat ()
-  (let ((triples-sqlite-interface 'builtin))
-    (triples-test-with-temp-db
-      (triples-add-schema db 'person
-                            '(name :base/unique t :base/type string)
-                            '(age :base/unique t :base/type integer))
-        (triples-set-type db 123 'person :name "Alice Aardvark" :age 41)
-        (should (equal (triples-get-type db 123 'person)
-                       '(:age 41 :name "Alice Aardvark")))
-        (triples-close db)
-        (let* ((triples-sqlite-interface 'emacsql)
-               (db (triples-connect db-file)))
-          (should (equal (triples-get-type db 123 'person)
-                         '(:age 41 :name "Alice Aardvark")))
-          (triples-close db))
-        ;; Just so the last close will work.
-        (setq db (triples-connect db-file)))))
+  (cl-loop for subject in '(1 a "a") do
+           (let ((triples-sqlite-interface 'builtin))
+             (triples-test-with-temp-db
+               (triples-add-schema db 'person
+                                     '(name :base/unique t :base/type string)
+                                     '(age :base/unique t :base/type integer))
+                 (triples-set-type db subject 'person :name "Alice Aardvark" :age 41)
+                 (should (equal (triples-get-type db subject 'person)
+                                '(:age 41 :name "Alice Aardvark")))
+                 (triples-close db)
+                 (let* ((triples-sqlite-interface 'emacsql)
+                        (db (triples-connect db-file)))
+                   (should (equal (triples-get-type db subject 'person)
+                                  '(:age 41 :name "Alice Aardvark")))
+                   (triples-close db))
+                 ;; Just so the last close will work.
+                 (setq db (triples-connect db-file))))))
 
 (ert-deftest triples-test-emacsql-builtin-compat ()
-  (let ((triples-sqlite-interface 'emacsql))
-    (triples-test-with-temp-db
-      (triples-add-schema db 'person
-                            '(name :base/unique t :base/type string)
-                            '(age :base/unique t :base/type integer))
-        (triples-set-type db 123 'person :name "Alice Aardvark" :age 41)
-        (should (equal (triples-get-type db 123 'person)
-                       '(:age 41 :name "Alice Aardvark")))
-        (triples-close db)
-        (let* ((triples-sqlite-interface 'builtin)
-               (db (triples-connect db-file)))
-          (should (equal (triples-get-type db 123 'person)
-                         '(:age 41 :name "Alice Aardvark")))
-          (triples-close db))
-        ;; Just so the last close will work.
-        (setq db (triples-connect db-file)))))
+  (cl-loop for subject in '(1 a "a") do
+           (let ((triples-sqlite-interface 'emacsql))
+             (triples-test-with-temp-db
+               (triples-add-schema db 'person
+                                     '(name :base/unique t :base/type string)
+                                     '(age :base/unique t :base/type integer))
+                 (triples-set-type db subject 'person :name "Alice Aardvark" :age 41)
+                 (should (equal (triples-get-type db subject 'person)
+                                '(:age 41 :name "Alice Aardvark")))
+                 (triples-close db)
+                 (let* ((triples-sqlite-interface 'builtin)
+                        (db (triples-connect db-file)))
+                   (should (equal (triples-get-type db subject 'person)
+                                  '(:age 41 :name "Alice Aardvark")))
+                   (triples-close db))
+                 ;; Just so the last close will work.
+                 (setq db (triples-connect db-file))))))
     
 
 ;; After this we don't bother testing both with emacsql and the builtin sqlite,
