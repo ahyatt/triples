@@ -90,4 +90,4 @@ LAST-UPDATE is the time of the last update."
       7))
 
 (provide 'triples-backups)
-;;; Code:
+;;; triples-backups.el ends here

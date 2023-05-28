@@ -190,6 +190,43 @@ easily debug into it.")
     ;; this will fail.
     (should (= 0 (length (triples-db-select-pred-op db :person/age '> 1000))))))
 
+(ert-deftest triples-test-builtin-emacsql-compat ()
+  (let ((triples-sqlite-interface 'builtin))
+    (triples-test-with-temp-db
+      (triples-add-schema db 'person
+                            '(name :base/unique t :base/type string)
+                            '(age :base/unique t :base/type integer))
+        (triples-set-type db 123 'person :name "Alice Aardvark" :age 41)
+        (should (equal (triples-get-type db 123 'person)
+                       '(:age 41 :name "Alice Aardvark")))
+        (triples-close db)
+        (let* ((triples-sqlite-interface 'emacsql)
+               (db (triples-connect db-file)))
+          (should (equal (triples-get-type db 123 'person)
+                         '(:age 41 :name "Alice Aardvark")))
+          (triples-close db))
+        ;; Just so the last close will work.
+        (setq db (triples-connect db-file)))))
+
+(ert-deftest triples-test-emacsql-builtin-compat ()
+  (let ((triples-sqlite-interface 'emacsql))
+    (triples-test-with-temp-db
+      (triples-add-schema db 'person
+                            '(name :base/unique t :base/type string)
+                            '(age :base/unique t :base/type integer))
+        (triples-set-type db 123 'person :name "Alice Aardvark" :age 41)
+        (should (equal (triples-get-type db 123 'person)
+                       '(:age 41 :name "Alice Aardvark")))
+        (triples-close db)
+        (let* ((triples-sqlite-interface 'builtin)
+               (db (triples-connect db-file)))
+          (should (equal (triples-get-type db 123 'person)
+                         '(:age 41 :name "Alice Aardvark")))
+          (triples-close db))
+        ;; Just so the last close will work.
+        (setq db (triples-connect db-file)))))
+    
+
 ;; After this we don't bother testing both with emacsql and the builtin sqlite,
 ;; since if the functions tested above work, it should also work for both.
 
@@ -426,10 +463,10 @@ easily debug into it.")
     (should (= 1 (length (triples-subjects-with-predicate-object db 'named/name "Foo"))))))
 
 (ert-deftest triples-readme ()
-  (triples-test-with-temp-db
-   (triples-add-schema db 'person
+  ((triples-add-schema db 'person
        '(name :base/unique t :base/type string)
        '(age :base/unique t :base/type integer))
+   triples-test-with-temp-db
    (triples-add-schema db 'employee
        '(id :base/unique t :base/type integer)
        '(manager :base/unique t)

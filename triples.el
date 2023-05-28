@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/triples
 ;; Package-Requires: ((seq "2.0") (emacs "28.1"))
 ;; Keywords: triples, kg, data, sqlite
-;; Version: 0.2.7
+;; Version: 0.3
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 2 of the
@@ -137,15 +137,17 @@ exist at any time. Older backups are the ones that are deleted."
   "If VAL is a string, return it as enclosed in quotes
 This is done to have compatibility with the way emacsql stores
 values. Turn a symbol into a string as well, but not a quoted
-one, because sqlite cannot handle symbols."
+one, because sqlite cannot handle symbols. Integers do not need
+to be stringified."
   ;; Do not print control characters escaped - we want to get things out exactly
   ;; as we put them in.
   (let ((print-escape-control-characters nil))
-    (if val
-        (format "%S" val)
+    (pcase val
       ;; Just to save a bit of space, let's use "()" instead of "null", which is
       ;; what it would be turned into by the pcase above.
-      "()")))
+      ((pred null) "()")
+      ((pred integerp) val)
+      (_ (format "%S" val)))))
 
 (defun triples-standardize-result (result)
   "Return RESULT in standardized form.
