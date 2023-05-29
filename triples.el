@@ -1,6 +1,6 @@
 ;;; triples.el --- A flexible triple-based database for use in apps  -*- lexical-binding: t; -*-
 
-;; Copyright (c) 2022  Free Software Foundation, Inc.
+;; Copyright (c) 2022, 2023  Free Software Foundation, Inc.
 
 ;; Author: Andrew Hyatt <ahyatt@gmail.com>
 ;; Homepage: https://github.com/ahyatt/triples
