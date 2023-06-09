@@ -244,7 +244,7 @@ easily debug into it.")
             '(locale :base/unique t)
             'alternate-names
             '(nicknames :base/unique nil))
-           '(replace-subject
+           '(replace-subject-type
              .
              ((named base/type schema)
               (named schema/property name)
@@ -463,6 +463,14 @@ easily debug into it.")
     (triples-add-schema db 'named '(name))
     (triples-set-subject db 123 '(named :name ("Foo" "Foo")))
     (should (= 1 (length (triples-subjects-with-predicate-object db 'named/name "Foo"))))))
+
+(ert-deftest triples-test-schema-and-data-with-same-subject ()
+  (triples-test-with-temp-db
+   (triples-add-schema db 'foo '(bar))
+   (triples-set-subject db 'foo '(foo :bar "baz"))
+   (should (equal "baz" (plist-get (triples-get-subject db 'foo) :foo/bar)))
+   (triples-add-schema db 'foo '(bar))
+   (should (equal "baz" (plist-get (triples-get-subject db 'foo) :foo/bar)))))
 
 (ert-deftest triples-readme ()
   (triples-test-with-temp-db

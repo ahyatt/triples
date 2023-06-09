@@ -2,6 +2,7 @@ TITLE: Changelog for the triples module for GNU Emacs.
 
 * 0.3
 - All integers are stored as integers, and not strings.  Applications using this library in previous versions should have users run ~triples-upgrade-to-0.3~.
+- Fix for issue where adding schema would overwrite non-schema data on the same subject.
 * 0.2.7
 - Add new function =triples-db-select-pred-op=, which allows querying among predicates for objects with a certain relationship to values, replaces =triples-db-select-predicate-object-fragment=.
 - Add ability to store cons types (basically lists) as values.

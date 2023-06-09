@@ -447,7 +447,7 @@ definitions."
 PROPS is a list of either property symbols, or lists of
 properties of the type and the meta-properties associated with
 them."
-  (cons 'replace-subject
+  (cons 'replace-subject-type
         (cons `(,type base/type schema)
               (cl-loop for p in props
                        nconc
