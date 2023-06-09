@@ -65,11 +65,7 @@ If FILE is nil, use `triples-default-database-filename'."
   (let ((file (or file triples-default-database-filename)))
     (pcase triples-sqlite-interface
       ('builtin (let* ((db (sqlite-open file)))
-                  (sqlite-execute db "CREATE TABLE IF NOT EXISTS triples(subject TEXT NOT NULL, predicate TEXT NOT NULL, object NOT NULL, properties TEXT NOT NULL)")
-                  (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_idx ON triples (subject)")
-                  (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_predicate_idx ON triples (subject, predicate)")
-                  (sqlite-execute db "CREATE INDEX IF NOT EXISTS predicate_object_idx ON triples (predicate, object)")
-                  (sqlite-execute db "CREATE UNIQUE INDEX IF NOT EXISTS subject_predicate_object_properties_idx ON triples (subject, predicate, object, properties)")
+                  (triples-setup-table-for-builtin db)
                   db))
       ('emacsql
        (require 'emacsql)
@@ -88,6 +84,16 @@ If FILE is nil, use `triples-default-database-filename'."
            (emacsql db [:create-index predicate_object_idx :on triples [predicate object]])
            (emacsql db [:create-unique-index subject_predicate_object_properties_idx :on triples [subject predicate object properties]]))
          db)))))
+
+(defun triples-setup-table-for-builtin (db)
+  "Set up the triples table in DB.
+This is a separate function due to the need to use it during
+upgrades to version 0.3"
+  (sqlite-execute db "CREATE TABLE IF NOT EXISTS triples(subject NOT NULL, predicate TEXT NOT NULL, object NOT NULL, properties TEXT NOT NULL)")
+  (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_idx ON triples (subject)")
+  (sqlite-execute db "CREATE INDEX IF NOT EXISTS subject_predicate_idx ON triples (subject, predicate)")
+  (sqlite-execute db "CREATE INDEX IF NOT EXISTS predicate_object_idx ON triples (predicate, object)")
+  (sqlite-execute db "CREATE UNIQUE INDEX IF NOT EXISTS subject_predicate_object_properties_idx ON triples (subject, predicate, object, properties)"))
 
 (defun triples-close (db)
   "Close sqlite database DB."
