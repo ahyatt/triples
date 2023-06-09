@@ -29,17 +29,6 @@
 (require 'rx)
 (require 'sqlite)
 
-(defun triples-upgrade-to-0.3-simplified (db)
-  "Upgrade the database to version 0.3.
-For sqlite, we want to convert the storage to be more compatible
-with emacsql's version, which had subject as a BLOB type (the
-default column type). In the builtin database, it was a TEXT
-type. This function fixes the schema."
-  (if (or (version< emacs-version "29")
-          (not (eq (type-of db) 'sqlite)))
-      (message "Upgrade is only needed for the built-in sqlite databases used by emacs 29+")
-    ))
-
 (defun triples-upgrade-to-0.3 (db)
   "Upgrade the DB to version 0.3.
 This will convert all stringified integers stored with sqlite to
