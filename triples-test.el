@@ -465,32 +465,32 @@ easily debug into it.")
     (should (= 1 (length (triples-subjects-with-predicate-object db 'named/name "Foo"))))))
 
 (ert-deftest triples-readme ()
-  ((triples-add-schema db 'person
+  (triples-test-with-temp-db
+    (triples-add-schema db 'person
        '(name :base/unique t :base/type string)
        '(age :base/unique t :base/type integer))
-   triples-test-with-temp-db
-   (triples-add-schema db 'employee
-       '(id :base/unique t :base/type integer)
-       '(manager :base/unique t)
-       '(reportees :base/virtual-reversed employee/manager))
-   ;; Set up catherine and dennis
-  (triples-set-type db "catherine" 'employee :manager "alice")
-  (triples-set-type db "dennis" 'employee :manager "alice")
-  (triples-delete-subject db "alice")
-  (triples-set-type db "alice" 'person :name "Alice Aardvark" :age 41)
-  (triples-set-type db "alice" 'employee :id 1901 :manager "bob")
-  (should (equal (triples-test-plist-sort (triples-get-subject db "alice"))
-                 (triples-test-plist-sort '(:person/name "Alice Aardvark" :person/age 41
-                                                         :employee/id 1901
-                                                         :employee/manager "bob"
-                                                         :employee/reportees ("catherine" "dennis")))))
-  (triples-set-subject db "alice" '(person :name "Alice Aardvark" :age 41)
-                       '(employee :id 1901 :manager "bob"))
-  (should (equal (triples-test-plist-sort (triples-get-subject db "alice"))
-                 (triples-test-plist-sort '(:person/name "Alice Aardvark" :person/age 41
-                                                         :employee/id 1901
-                                                         :employee/manager "bob"
-                                                         :employee/reportees ("catherine" "dennis")))))))
+    (triples-add-schema db 'employee
+                        '(id :base/unique t :base/type integer)
+                        '(manager :base/unique t)
+                        '(reportees :base/virtual-reversed employee/manager))
+    ;; Set up catherine and dennis
+    (triples-set-type db "catherine" 'employee :manager "alice")
+    (triples-set-type db "dennis" 'employee :manager "alice")
+    (triples-delete-subject db "alice")
+    (triples-set-type db "alice" 'person :name "Alice Aardvark" :age 41)
+    (triples-set-type db "alice" 'employee :id 1901 :manager "bob")
+    (should (equal (triples-test-plist-sort (triples-get-subject db "alice"))
+                   (triples-test-plist-sort '(:person/name "Alice Aardvark" :person/age 41
+                                                           :employee/id 1901
+                                                           :employee/manager "bob"
+                                                           :employee/reportees ("catherine" "dennis")))))
+    (triples-set-subject db "alice" '(person :name "Alice Aardvark" :age 41)
+                         '(employee :id 1901 :manager "bob"))
+    (should (equal (triples-test-plist-sort (triples-get-subject db "alice"))
+                   (triples-test-plist-sort '(:person/name "Alice Aardvark" :person/age 41
+                                                           :employee/id 1901
+                                                           :employee/manager "bob"
+                                                           :employee/reportees ("catherine" "dennis")))))))
 
 
 (provide 'triples-test)
