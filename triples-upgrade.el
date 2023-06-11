@@ -52,7 +52,7 @@ be correct by default."
       db
       (sqlite-execute db "ALTER TABLE triples RENAME TO triples_old")
       (triples-setup-table-for-builtin db)
-      (sqlite-execute db "INSERT INTO triples (subject, predicate, object, properties) SELECT subject, predicate, object, properties FROM triples_old")
+      (sqlite-execute db "INSERT INTO triples (subject, predicate, object, properties) SELECT DISTINCT subject, predicate, object, properties FROM triples_old")
       (sqlite-execute db "DROP TABLE triples_old"))
     (let ((replace-approved))
         (mapc (lambda (column)

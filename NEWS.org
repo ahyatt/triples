@@ -1,5 +1,7 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
+* 0.3.1
+- Fix issue with issue where duplicate values could interfere with table index creation during upgrade, causing type duplication.
 * 0.3
 - All integers are stored as integers, and not strings.  Applications using this library in previous versions should have users run ~triples-upgrade-to-0.3~.
 - Fix for issue where adding schema would overwrite non-schema data on the same subject.
