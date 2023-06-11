@@ -5,7 +5,7 @@ The =triples= module is a standard database module designed for use in other ema
 * Installing
 This module is available through GNU ELPA, and can be installed as normal.  However, most of the time this module is only useful in concert with another module which uses it as a library and will declare it as a dependency, so unless you are planning on developing with it, there is usually no need to install it directly.
 * Maturity
-This module is very new should be considered alpha quality.
+This module is somewhat new and should be considered beta quality.
 
 While it has basic functionality, there are significant parts, such as a querying language, that are missing.  Whether anyone needs such parts will determine the priority in which they get built.
 * Using the =triples= library
