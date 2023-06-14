@@ -27,7 +27,7 @@
 
 (require 'triples)
 (require 'rx)
-(require 'sqlite)
+(require 'sqlite nil t)
 
 (defun triples-upgrade-to-0.3 (db)
   "Upgrade the DB to version 0.3.
