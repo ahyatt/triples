@@ -75,7 +75,7 @@ be correct by default."
                                                    (y-or-n-p (format "triples: For subject %d, existing real integer subject found.  Replace for this and others? "
                                                                      int-val))))
                                       (setq replace-approved t)
-                                        (sqlite-execute db "DELETE FROM triples WHERE subject = ? AND typeof(subject) = 'integer"
+                                        (sqlite-execute db "DELETE FROM triples WHERE subject = ? AND typeof(subject) = 'integer'"
                                                         (list int-val))))
                               (sqlite-execute db (format "UPDATE OR REPLACE triples SET %s = cast(REPLACE(%s, '\"', '') as integer) WHERE %s = ?"
                                                          column column column)
