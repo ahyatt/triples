@@ -54,6 +54,16 @@ It is invoked to make backups.")
   "The default filename triples database. If no database is
 specified, this file is used.")
 
+(defun triples-rebuild-builtin-database (db)
+  "Rebuild the builtin database DB.
+This is used in upgrades and when problems are detected."
+  (triples-with-transaction
+      db
+      (sqlite-execute db "ALTER TABLE triples RENAME TO triples_old")
+      (triples-setup-table-for-builtin db)
+      (sqlite-execute db "INSERT INTO triples (subject, predicate, object, properties) SELECT DISTINCT subject, predicate, object, properties FROM triples_old")
+      (sqlite-execute db "DROP TABLE triples_old")))
+
 (defun triples-connect (&optional file)
   "Connect to the database FILE and make sure it is populated.
 If FILE is nil, use `triples-default-database-filename'."
@@ -65,7 +75,12 @@ If FILE is nil, use `triples-default-database-filename'."
   (let ((file (or file triples-default-database-filename)))
     (pcase triples-sqlite-interface
       ('builtin (let* ((db (sqlite-open file)))
-                  (triples-setup-table-for-builtin db)
+                  (condition-case nil
+                      (triples-setup-table-for-builtin db)
+                    (error
+                     (message "triples: failed to ensure proper database tables and indexes.  Trying an automatic fix.")
+                     (triples-rebuild-builtin-database db)
+                     (message "triples: fix completed, if this message re-occurs please file a bug report.")))
                   db))
       ('emacsql
        (require 'emacsql)

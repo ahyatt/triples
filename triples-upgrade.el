@@ -48,12 +48,7 @@ be correct by default."
           (not (eq (type-of db) 'sqlite)))
       (message "Upgrade is only needed for the built-in sqlite databases used by emacs 29+")
     (message "triples: Upgrading triples schema to 0.3")
-    (triples-with-transaction
-      db
-      (sqlite-execute db "ALTER TABLE triples RENAME TO triples_old")
-      (triples-setup-table-for-builtin db)
-      (sqlite-execute db "INSERT INTO triples (subject, predicate, object, properties) SELECT DISTINCT subject, predicate, object, properties FROM triples_old")
-      (sqlite-execute db "DROP TABLE triples_old"))
+    (triples-rebuild-builtin-database db)
     (let ((replace-approved))
         (mapc (lambda (column)
                 ;; This would all be easier if sqlite supported REGEXP, but
