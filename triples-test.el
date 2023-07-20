@@ -227,6 +227,24 @@ easily debug into it.")
                    (triples-close db))
                  ;; Just so the last close will work.
                  (setq db (triples-connect db-file))))))
+
+(ert-deftest triples-test-emacsql-to-sqlite-dup-fixing ()
+  (let ((triples-sqlite-interface 'emacsql)
+        (db-file (make-temp-file "triples-test"))
+        (db))
+    (setq triples-test-db-file db-file)
+    (setq db (triples-connect db-file))
+    (triples-add-schema db 'person '(name :base/unique t :base/type string))
+    (triples-set-type db 1 'person :name "Alice Aardvark")
+    (triples-close db)
+    (setq triples-sqlite-interface 'builtin)
+    (setq db (triples-connect db-file))
+    (triples-set-type db 1 'person :name "Alice Aardvark")
+    ;; Should just be one plist key and value, so two values. However, if we
+    ;; don't fix things up, we get two because there is a dup row.
+    (should (= 2 (length (triples-get-subject db 1))))
+    (triples-close db)
+    (delete-file db-file)))
     
 
 ;; After this we don't bother testing both with emacsql and the builtin sqlite,

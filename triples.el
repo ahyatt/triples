@@ -64,6 +64,23 @@ This is used in upgrades and when problems are detected."
       (sqlite-execute db "INSERT INTO triples (subject, predicate, object, properties) SELECT DISTINCT subject, predicate, object, properties FROM triples_old")
       (sqlite-execute db "DROP TABLE triples_old")))
 
+(defun triples-maybe-upgrade-to-builtin (db)
+  "Check to see if DB needs to be upgraded from emacsql to builtin."
+  ;; Check to see if this was previously an emacsql database, and if so,
+  ;; change the property column to be standard for builtin sqlite.
+  (when (> (caar (sqlite-select db "SELECT COUNT(*) FROM triples WHERE properties = '(:t t)'"))
+           0)
+    (if (> (caar (sqlite-select db "SELECT COUNT(*) FROM triples WHERE properties = '()'"))
+            0)
+        (progn
+          (message "triples: detected data written with both builtin and emacsql, upgrading and removing duplicates")
+          ;; Where we can, let's just upgrade the old data.  However, sometimes we cannot due to duplicates.
+          (sqlite-execute db "UPDATE OR IGNORE triples SET properties = '()' WHERE properties = '(:t t)'")
+          ;; Remove any duplicates that we cannot upgrade.
+          (sqlite-execute db "DELETE FROM triples WHERE properties = '(:t t)'"))
+      (message "triples: detected previously used emacsql database, converting to builtin sqlite")
+      (sqlite-execute db "UPDATE triples SET properties = '()' WHERE properties = '(:t t)'"))))
+
 (defun triples-connect (&optional file)
   "Connect to the database FILE and make sure it is populated.
 If FILE is nil, use `triples-default-database-filename'."
@@ -76,7 +93,9 @@ If FILE is nil, use `triples-default-database-filename'."
     (pcase triples-sqlite-interface
       ('builtin (let* ((db (sqlite-open file)))
                   (condition-case nil
-                      (triples-setup-table-for-builtin db)
+                      (progn
+                        (triples-setup-table-for-builtin db)
+                        (triples-maybe-upgrade-to-builtin db))
                     (error
                      (message "triples: failed to ensure proper database tables and indexes.  Trying an automatic fix.")
                      (triples-rebuild-builtin-database db)
