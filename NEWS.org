@@ -1,5 +1,7 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
+* 0.3.5
+- Compilation issues, and fixing an issue with not being able to use triples-with-transaction in some cases.
 * 0.3.4
 - Fix instances where the database has no index, and has duplicate rows because of that index.
 - Fix differences in the properties column between emacsql and builtin when upgrading from emacsql to builtin.

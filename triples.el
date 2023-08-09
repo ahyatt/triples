@@ -33,8 +33,15 @@
 (require 'package)
 (require 'seq)
 (require 'subr-x)
+(require 'emacsql nil t)
 
 ;;; Code:
+
+(defvar emacsql-sqlite-executable)
+(declare-function emacsql-with-transaction "emacsql")
+(declare-function emacsql-close "emacsql")
+(declare-function emacsql-sqlite "emacsql")
+(declare-function emacsql "emacsql")
 
 (defvar triples-sqlite-interface
   (if (and (fboundp 'sqlite-available-p) (sqlite-available-p))
@@ -53,6 +60,12 @@ It is invoked to make backups.")
 (defconst triples-default-database-filename (locate-user-emacs-file "triples.db")
   "The default filename triples database. If no database is
 specified, this file is used.")
+
+(defmacro triples-with-transaction (db &rest body)
+  "Create a transaction using DB, executing BODY.
+The transaction will abort if an error is thrown."
+  (declare (indent 0) (debug t))
+  `(triples--with-transaction ,db (lambda () ,@body)))
 
 (defun triples-rebuild-builtin-database (db)
   "Rebuild the builtin database DB.
@@ -135,8 +148,11 @@ upgrades to version 0.3"
     ('builtin (sqlite-close db))
     ('emacsql (emacsql-close db))))
 
-(defun triples-backup (db filename num-to-keep)
-  "Perform a backup of DB, located at path FILENAME.
+(defun triples-backup (_ filename num-to-keep)
+  "Perform a backup of the db, located at path FILENAME.
+The first argument is unused, but later may be used to specify
+the running database.
+
 This uses the same backup location and names as configured in
 variables such as `backup-directory-alist'. Due to the fact that
 the database is never opened as a buffer, normal backups will not
@@ -517,12 +533,6 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
                (cons (triples-type-and-prop-to-combined type (car c))
                      (cdr c))) prop-schema-alist))
     (triples--add db op)))
-
-(defmacro triples-with-transaction (db &rest body)
-  "Create a transaction using DB, executing BODY.
-The transaction will abort if an error is thrown."
-  (declare (indent 0) (debug t))
-  `(triples--with-transaction ,db (lambda () ,@body)))
 
 (defmacro triples--eval-when-fboundp (sym form)
   "Delay macroexpansion to runtime if SYM is not yet `fboundp'."
