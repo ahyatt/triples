@@ -30,33 +30,38 @@
 (require 'sqlite)
 (require 'seq)
 
-(defun triples-fts-setup (db)
+(defun triples-fts-setup (db &optional force)
   "Ensure DB has a FTS table.
 As long as the FTS table exists, this will not try to recreate
-it."
+it. If FORCE is non-nil, then the FTS and all triggers will be
+recreated and repopulated."
   (let ((fts-existed (sqlite-select db "SELECT name FROM sqlite_master WHERE type='table' AND name='triples_fts'")))
-   (sqlite-execute db "CREATE VIRTUAL TABLE IF NOT EXISTS triples_fts USING fts5 (subject, object, content=triples, content_rowid=rowid)")
-  ;; Triggers that will update triples_fts, but only for text objects.
-  ;; New rows:
-  (sqlite-execute db "CREATE TRIGGER IF NOT EXISTS triples_fts_insert AFTER INSERT ON triples
+    (when force (sqlite-execute db "DROP TABLE triples_fts"))
+    (sqlite-execute db "CREATE VIRTUAL TABLE IF NOT EXISTS triples_fts USING fts5 (subject, object, content=triples, content_rowid=rowid)")
+    ;; Triggers that will update triples_fts, but only for text objects.
+    ;; New rows:
+    (when force (sqlite-execute db "DROP TRIGGER IF EXISTS triples_fts_insert"))
+    (sqlite-execute db "CREATE TRIGGER IF NOT EXISTS triples_fts_insert AFTER INSERT ON triples
       WHEN new.object IS NOT NULL and typeof(new.object) = 'text'
       BEGIN
         INSERT INTO triples_fts (rowid, subject, object) VALUES (new.rowid, new.subject, new.object);
       END")
-  ;; Updated rows:
-  (sqlite-execute db "CREATE TRIGGER IF NOT EXISTS triples_fts_update AFTER UPDATE ON triples
+    ;; Updated rows:
+    (when force (sqlite-execute db "DROP TRIGGER IF EXISTS triples_fts_update"))
+    (sqlite-execute db "CREATE TRIGGER IF NOT EXISTS triples_fts_update AFTER UPDATE ON triples
         WHEN new.object IS NOT NULL AND typeof(new.object) = 'text'
         BEGIN
-          INSERT INTO triples_fts (triples_fts, rowid, subject, object) VALUES ('delete', old.subject, old.object);
+          INSERT INTO triples_fts (triples_fts, rowid, subject, object) VALUES ('delete', old.rowid, old.subject, old.object);
           INSERT INTO triples_fts (rowid, subject, object) VALUES (new.rowid, new.subject, new.object);
         END")
-  ;; Deleted rows:
-  (sqlite-execute db "CREATE TRIGGER IF NOT EXISTS triples_fts_delete AFTER DELETE ON triples
+    ;; Deleted rows:
+    (when force (sqlite-execute db "DROP TRIGGER IF EXISTS triples_fts_delete"))
+    (sqlite-execute db "CREATE TRIGGER IF NOT EXISTS triples_fts_delete AFTER DELETE ON triples
       WHEN old.object IS NOT NULL AND typeof(old.object) = 'text'
       BEGIN
         INSERT INTO triples_fts (triples_fts, subject, object) VALUES ('delete', old.subject, old.object);
       END")
-  (unless fts-existed (triples-fts-rebuild db))))
+    (if (or force (not fts-existed)) (triples-fts-rebuild db))))
 
 (defun triples-fts-rebuild (db)
   "Rebuild the FTS table for DB."
@@ -66,7 +71,7 @@ it."
   "Query DB with QUERY.
 Returns a list of subjects that match the query, sorted by most
 relevant to least."
-  (seq-uniq (mapcar #'car (sqlite-select db "SELECT subject FROM triples_fts WHERE triples_fts MATCH ? ORDER BY rank" (list query)))))
+  (seq-uniq (mapcar #'triples-standardize-result (mapcar #'car (sqlite-select db "SELECT subject FROM triples_fts WHERE triples_fts MATCH ? ORDER BY rank" (list query))))))
 
 (provide 'triples-fts)
 
