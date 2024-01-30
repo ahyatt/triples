@@ -34,6 +34,8 @@ A triple is a unit of data consisting of a /subject/, a /predicate/, an /object/
 Let's say that, as in the example above, we want to store someone's name.  The triples would be a /subject/ that uniquely identifies the person, a /predicate/ that indicates the link between subject and object is about a name, and the object, which is the name value.
 
 The object can become the subject, and this explains how the =base/virtual-reversed= predicate works.   If Bob is the manager of Alice, then there could be a triple with Alice as the subject, =manager= as the predicate, and Bob as the object.  But we can also find the reversed links, and ask who all are all the people that Bob manages.  In this case, Bob is the subject, and Alice is the object.  However, we don't actually need to store this information and try to keep it in sync, we can just get it by querying for when the Bob is the object and =manager= is the predicate.
+
+The ideas behind the database and notes on design can be found in the [[file:triples-design.org][triples-design.org file]].
 ** Connecting
 Before a database can be used, it should be connected with.  This is done by the =triples-connect= function, which can be called with a filename or without.  If a filename isn't given, a default one for the triples library, given in =triples-default-database-filename= is used.  This provides a standard database for those that want to take advantage of the possibilities of having data from different sources that can build on each other.
 

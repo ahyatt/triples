@@ -1,0 +1,71 @@
+* How to think about triples
+A triple graph is one that is based on /subject/, /predicate/ and /object/ "triples".  These can be thought of as a graph: any object can also be a subject.  The graph can be stored in many different ways, in a SQL database is just one way, and even that can be done in different ways.
+
+To show the graph-like nature, consider this example of how to store information about elisp functions.  Here are a set of triples (in subject, predicate, object groups) that represent which functions are advised by other functions.
+
+#+begin_example
+(save-buffer :function/advised-by my-before-save-function)
+(save-buffer :function/advised-by my-save-notification-function)
+(kill-emacs :function/advised-by my-emacs-cleanup-function)
+#+end_example
+
+Here the subject and the object are both the same type of thing, an elisp function.  You can consider this a graph where there is a link between =save-buffer= subject and =my-before-save-function=, and that link is of type =:advised-by=. The link is bidirectional.  Because of that we can ask questions like: what are the functions that advise ~save-buffer~?  Also, what functions does ~my-save-notification-function~ advise?  
+
+But what if we wanted to also store what type of advising this is (~before~, ~around~, ~after~)?  We could do this in a few ways.  Perhaps we can make the object more complicated, encompassing everything about what we want to store:
+
+#+begin_example
+(save-buffer :function/advised-by (my-before-save-function before))
+(save-buffer :function/advised-by (my-save-notification-function after))
+(kill-emacs :function/advised-by (my-emacs-cleanup-function before))
+#+end_example
+
+But that means we can no longer rely on a link between functions like there were before.  Insead, it makes sense to write this in a way that introduces a point of indirection.  We have to do this because the link between these two functions has data itself, the kind of advising.  So we have to create an intermediary object.  For example:
+
+#+begin_example
+(save-buffer :function/advised-by <id1>)
+(<id1> :advisor/name my-before-save-function)
+(<id1> :advisor/type before)
+#+end_example
+
+Now we can ask questions like what functions are being advised with ~before~ advice, but for all queries about advising, we have to go through the intermediate object with subject =<id1>=.  
+* Subjects
+In the above example, we have some subjects that have meaning (=save-buffer=), and some that don't (=<id1>=).
+
+There isn't a need for any subjects to have meaning.  For example, we could have modeled the above like this, and it'd still be able to do what we need:
+
+#+begin_example
+(<id1> :function/name save-buffer)
+(<id1> :function/advised-by <id2>)
+(<id2> :advisor/name my-before-save-function)
+(<id2> :advisor/type before)
+#+end_example
+
+So to find out what functions advise ~save-buffer~ we can see what IDs have =:function/name= equal to =save-buffer=, and then look for =:function/advised-by=, and load the triple to see what is advising it.
+
+In general, subjects need to be unique.  Not per row of the database that they are stored in, but unique to whatever the entity that is being stored is.  So an email address would be a good subject, but a name would not be.  A guaranteed unique ID (GUID) would be reasonable.  These tend to be stored a lot, so the shorter the subjects are, the better.  [[https://www.wikidata.org/wiki/Property:P646][Freebase IDs]] were uint64s, or base-32 encoding of that ID, with a prefix ("/m/05fqyx").  In the example above, having IDs instead of subjects is actually better, since function names aren't unique - they can be shared with variable names.  If we were modeling Scheme, it would be OK to use the name as a subject, because it was unique, and could have properties related to functions and variables.  That would be possible for lisp, though, since these are two different objects, and it's important to understand what triples mean when a certain value appears as an object.
+
+As long as subjects are unique, everything should work.  Using IDs everywhere is safe and how most Knowledge Graphs do it.  However, it's fine to have subjects as something meaningful, as long as they are unique and unlikely to change.  For example, using an email address as a subject is fine, but may not be the best choice to represent a person, who may have many email addresses or change their email address.  However, a URL is probably a reasonable choice to represent a webpage.
+* Predicates and schema
+The predicate can be anything, but in Knowledge Graphs it is typically constrained by a schema (and this is how =ekg= works as well).  A subject can have multiple types, each with its own data.  To expand on our example from earlier, an elisp function can have multiple types, such as data related to being a function itself, data related to advising, data related to documentation, etc.  This is optional for functions, but other things especially in the real world often have data that is best modeled as different types.  Some people are writers, some are actors, some are CEOs, and each one of these things has different data, and people can be multiple of these things.  So a single subject has many different types, and each type stores data related to a certain data that is independent of all the other data the subject could have.
+
+Predicates also have reverse predicates.  In the examples above, we just show one side, but in reality specify a triple link implies the reverse links as well.  So, for example:
+#+begin_example
+(<id1> :function/advised-by <id2>)
+#+end_example
+
+also implicitly defines the reverse link triple:
+#+begin_example
+(<id2> :advisor/advises <id1>)
+#+end_example
+
+These reverse links are defined in the schema.
+
+When dealing with entities, it's important to be careful to not delete entities except in special circumstances.  Most of the time, it's appropriate to remove the type.  In our example, we know that the entity is really just about a function, so if the function disappears, it can be removed.  But it could be that some entities are about multiple things, and one of those things may need to be removed, but that doesn't mean the rest shouldn't stay.
+
+* Objects
+Objects are also potentially subjects.  We've seen that in the example above.  It's not always the case, because sometimes the objects are just data:
+#+begin_example
+(<id1> :function/num-times-called 4105)
+#+end_example
+
+Anything as an object can be queried, though, so this is why it's best to have simple objects, and model any complexity with different predicates.
