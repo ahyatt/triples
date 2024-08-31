@@ -393,6 +393,12 @@ object, properties to retrieve or nil for *."
                                  (when properties `((= properties ,(intern (format "$s%d" (cl-incf n)))))))))))
               (seq-filter #'identity (list subject predicate object properties)))))))
 
+(defun triples-db-count (db)
+  "Return the number of triples in DB."
+  (pcase triples-sqlite-interface
+    ('builtin (caar (sqlite-select db "SELECT COUNT(*) FROM triples")))
+    ('emacsql (caar (emacsql db [:select (funcall count *) :from triples])))))
+
 (defun triples-move-subject (db old-subject new-subject)
   "Replace all instance in DB of OLD-SUBJECT to NEW-SUBJECT.
 Any references to OLD-SUBJECT as an object are also replaced.
@@ -514,16 +520,36 @@ them."
                                                 (list pcombined (triples--decolon k) v)))
                                             pprops))))))))
 
+(defun triples-remove-schema-type (db type)
+  "This removes the schema for TYPE in DB, and all associated data."
+  (triples-with-transaction
+    db
+    (let ((subjects (triples-subjects-of-type db type)))
+      (mapc (lambda (subject)
+              (triples-remove-type db subject type))
+            subjects)
+      (triples-remove-type db type 'schema))))
+
+(defun triples-count (db)
+  "Return the number of triples in DB."
+  (triples-db-count db))
+
 (defun triples-set-type (db subject type &rest properties)
   "Create operation to replace PROPERTIES for TYPE for SUBJECT in DB.
 PROPERTIES is a plist of properties, without TYPE prefixes."
   (let* ((prop-schema-alist
-          (mapcar (lambda (prop)
-                    (cons (triples--decolon prop)
-                          (triples-properties-for-predicate
-                           db
-                           (triples-type-and-prop-to-combined type prop))))
-                  (triples--plist-mapcar (lambda (k _) k) properties)))
+          ;; If the type doesn't exist, there is no schema to check against.
+          (when (triples-get-type db type 'schema)
+            (triples--plist-mapcar
+             (lambda (k v)
+               (cons (triples--decolon k) v))
+             (triples-properties-for-predicate db (triples-type-and-prop-to-combined type 'schema/property)))
+            (mapcar (lambda (prop)
+                      (cons (triples--decolon prop)
+                            (triples-properties-for-predicate
+                             db
+                             (triples-type-and-prop-to-combined type prop))))
+                    (triples--plist-mapcar (lambda (k _) k) properties))))
          (op (triples--set-type-op subject type properties prop-schema-alist)))
     (triples-verify-schema-compliant
      (cdr op)
