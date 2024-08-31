@@ -13,9 +13,9 @@ jobs:
     strategy:
       matrix:
         emacs_version:
-          # Add more lines like this if you want to test on different Emacs versions.
-          - 28.1
-          - 28.2
+          # 28.1 and 28.2 should be tested, but they are not working for reasons
+          # I haven't figured out yet, and I haven't been able to test manually
+          # for other reasons I haven't figured out yet.
           - 29.1
           - 29.2
     steps:

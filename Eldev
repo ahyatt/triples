@@ -4,6 +4,8 @@
 (eldev-use-plugin 'maintainer)
 (eldev-add-extra-dependencies 'test '(:package emacsql))
 (eldev-add-extra-dependencies 'test '(:package kv))
+(eldev-add-extra-dependencies 'emacs '(:package emacsql))
+(eldev-add-extra-dependencies 'emacs '(:package kv))
 
 ;; To both deal with emacsql and built-in sqlite in various versions, we need to
 ;; weird things that package linting doesn't like.  So we disable this specific
