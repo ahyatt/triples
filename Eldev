@@ -1,6 +1,11 @@
-; -*- mode: emacs-lisp; lexical-binding: t -*-
+                                        ; -*- mode: emacs-lisp; lexical-binding: t -*-
 
 (eldev-use-package-archive 'melpa)
 (eldev-use-plugin 'maintainer)
 (eldev-add-extra-dependencies 'test '(:package emacsql))
 (eldev-add-extra-dependencies 'test '(:package kv))
+
+;; To both deal with emacsql and built-in sqlite in various versions, we need to
+;; weird things that package linting doesn't like.  So we disable this specific
+;; kind of linting.
+(add-to-list 'eldev-lint-disabled 'package)

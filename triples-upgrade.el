@@ -20,7 +20,7 @@
 
 ;;; Commentary:
 ;; Occasionally, changes in the triples library are not backwards-compatible,
-;; and require upgrading the database. This file contains functions to do those
+;; and require upgrading the database.  This file contains functions to do those
 ;; ugprades, along with instructions an how and when to use them.
 
 ;;; Code:
@@ -32,10 +32,10 @@
 (defun triples-upgrade-to-0.3 (db)
   "Upgrade the DB to version 0.3.
 This will convert all stringified integers stored with sqlite to
-actual integers. On emacs version before 29, it will not do
+actual integers.  On Emacs version before 29, it will not do
 anything, since only the built-in sqlite data needs upgrading.
 Callers should force a backup to happen before calling this,
-with `(triples-backup db file most-positive-fixnum)'.
+by calling triples-backup with `most-positive-fixnum'.
 
 This function only handles the case where users transition from
 emacsql to sqlite, it is assumed that users don't transition from
@@ -83,4 +83,5 @@ be correct by default."
       (message "Upgraded all stringified integers in triple database to actual integers"))))
 
 (provide 'triples-upgrade)
-;; triples-upgrade ends here
+
+;;; triples-upgrade.el ends here
