@@ -91,6 +91,7 @@ There are other useful functions, including:
 - =triples-with-predicate=, gets all triples that is about a specific property,
 - =triples-subject-with-predicate-object=, get all subjects whose predicate is equal to /object/,
 - =triples-subjects-of-type=, get all subjects which have a particular type.
+- =triples-remove-schema-type= , remove a type and all associated data from the schema (should be rarely used).
 ** Predicates, with type and without
 Sometimes the triples library will require predicates that are without type, and sometimes with type, or "combined predicates".  The rule is that if the type is already specified in the function, it does not need to be respecified.  If the type is not specified, it is included in the combined predicate.
 

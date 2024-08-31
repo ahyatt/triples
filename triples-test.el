@@ -27,7 +27,7 @@
 
 (require 'triples)
 (require 'seq)
-(require 'kv nil t)                     ;; May be absent.
+(require 'kv)
 (require 'emacsql nil t)                ;; May be absent.
 (require 'emacsql-sqlite nil t)         ;; May be absent.
 
@@ -48,11 +48,9 @@ easily debug into it.")
              (triples-close db)))
        (delete-file db-file))))
 
-(defun triples-test-connect-db ()
+(defun triples-test-open-db ()
   (interactive)
-  (defvar sql-database)
-  (let ((sql-database triples-test-db-file))
-    (sql-sqlite (format "*schema test db SQL %s*" triples-test-db-file))))
+  (sqlite-mode-open-file triples-test-db-file))
 
 (defmacro triples-deftest (name _ &rest body)
   "Create a test exercising variants of `triples-sqlite-interface'."
@@ -88,7 +86,7 @@ easily debug into it.")
                      '(("\"sub\"" "pred" "\"obj\"" "()")))))
     ;; Test that it replaces - this shouldn't result in two rows.
     (triples-db-insert db "sub" 'pred "obj")
-    (should (= (length (triples-db-select db)) 1))
+    (should (= (triples-count db) 1))
     ;; Test that colons in the predicate are stripped away when stored.
     (triples-db-insert db "sub" :test/pred "obj")
     (should (= (length (triples-db-select db nil 'test/pred)) 1))
@@ -103,7 +101,7 @@ easily debug into it.")
              '((sub pred obj))))
     ;; Test that properties aren't strings. They happen to be stored
     ;; differently for each system due to differences in how the inserting
-    ;; interface works.
+    ;; face works.
     (should (plistp (nth 3 (car (triples-db-select db 'sub)))))))
 
 (triples-deftest triples-test-delete ()
@@ -111,24 +109,24 @@ easily debug into it.")
     (triples-db-insert db 1 'pred 2)
     (triples-db-insert db 2 'pred 1)
     (triples-db-delete db 1)
-    (should (= 1 (length (triples-db-select db))))
+    (should (= 1 (triples-count db)))
     (should (= 0 (length (triples-db-select db 1))))
     (triples-db-insert db 1 'pred 2)
     (triples-db-delete db nil nil 2)
     (should (= 0 (length (triples-db-select db nil nil 2))))
     (triples-db-insert db 1 'pred 2)
     (triples-db-delete db nil 'pred nil)
-    (should (= 0 (length (triples-db-select db))))))
+    (should (= 0 (triples-count db)))))
 
 (triples-deftest triples-test-delete-subject-predicate-prefix ()
   (triples-test-with-temp-db
     (triples-db-insert db 1 'test/foo 2)
     (triples-db-insert db 1 'bar/bar 1)
     (triples-db-delete-subject-predicate-prefix db 1 'test)
-    (should (= 1 (length (triples-db-select db))))
+    (should (= 1 (triples-count db)))
     ;; Make sure colons are stripped.
     (triples-db-delete-subject-predicate-prefix db 1 :bar)
-    (should (= 0 (length (triples-db-select db))))))
+    (should (= 0 (triples-count db)))))
 
 (triples-deftest triples-test-select ()
   (triples-test-with-temp-db
@@ -483,11 +481,22 @@ easily debug into it.")
 
 (ert-deftest triples-test-schema-and-data-with-same-subject ()
   (triples-test-with-temp-db
-    (triples-add-schema db 'foo '(bar))
-    (triples-set-subject db 'foo '(foo :bar "baz"))
-    (should (equal "baz" (plist-get (triples-get-subject db 'foo) :foo/bar)))
-    (triples-add-schema db 'foo '(bar))
-    (should (equal "baz" (plist-get (triples-get-subject db 'foo) :foo/bar)))))
+    (triples-add-schema db 'foo '(bar :base/unique t))
+    (triples-add-schema db 'baz '(boo :base/unique t))
+    (triples-set-subject db 'foo '(baz :boo "bwa"))
+    (should (equal "bwa" (plist-get (triples-get-subject db 'foo) :baz/boo)))))
+
+(ert-deftest triples-test-remove-schema-type ()
+  (triples-test-with-temp-db
+    (should (= 0 (triples-count db)))
+    (triples-add-schema db 'named '(name))
+    (triples-set-type db "foo" 'named :name "My Name Is Fred Foo")
+    (triples-remove-schema-type db 'named)
+    (should-not (triples-get-type db 'named 'base/type))
+    (should-not (triples-get-type db "foo" 'named))
+    (should-error (triples-set-type db "foo" 'named :name "My Name Is Fred Foo"))
+    (ert-info ((format "Triples: %s" (triples-db-select db)))
+      (should (= 0 (triples-count db))))))
 
 (ert-deftest triples-readme ()
   (triples-test-with-temp-db
