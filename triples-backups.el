@@ -33,11 +33,11 @@ loaded before any client of this db calls
 `triples-backups-maybe-backup', so adding your own may not always
 be appropriate."
   (triples-with-transaction db
-    (triples-add-schema db 'backup '(num-to-keep :base/unique t :base/type integer)
-                        '(strategy :base/unique t :base/type symbol)
-                        '(last-update-time :base/unique t :base/type integer))
-    (triples-set-type db 'database 'backup :num-to-keep num-to-keep
-                      :strategy strategy :last-update-time (time-convert (current-time) 'integer))))
+                            (triples-add-schema db 'backup '(num-to-keep :base/unique t :base/type integer)
+                                                '(strategy :base/unique t :base/type symbol)
+                                                '(last-update-time :base/unique t :base/type integer))
+                            (triples-set-type db 'database 'backup :num-to-keep num-to-keep
+                                              :strategy strategy :last-update-time (time-convert (current-time) 'integer))))
 
 (defun triples-backups-configuration (db)
   "Returns the backup configuration set by `triples-backups-setup'.
