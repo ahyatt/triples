@@ -1,0 +1,6 @@
+; -*- mode: emacs-lisp; lexical-binding: t -*-
+
+(eldev-use-package-archive 'melpa)
+(eldev-use-plugin 'maintainer)
+(eldev-add-extra-dependencies 'test '(:package emacsql))
+(eldev-add-extra-dependencies 'test '(:package kv))
