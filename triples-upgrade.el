@@ -50,37 +50,37 @@ be correct by default."
     (message "triples: Upgrading triples schema to 0.3")
     (triples-rebuild-builtin-database db)
     (let ((replace-approved))
-        (mapc (lambda (column)
-                ;; This would all be easier if sqlite supported REGEXP, but
-                ;; instead we have to programmatically examine each string to see if it
-                ;; is an integer.
-                (mapc (lambda (row)
-                        (let ((string-val (car row)))
-                          (when (string-match (rx (seq string-start (opt ?\") (group-n 1 (1+ digit))) (opt ?\") string-end)
-                                              string-val)
-                            (message "triples: Upgrading %s with integer string value %s to a real integer" column string-val)
-                            ;; Subject transformations have to be treated
-                            ;; carefully, since they could end up duplicating
-                            ;; predicates.
-                            (let ((int-val (string-to-number (match-string 1 string-val))))
-                              (when (equal column "subject")
-                                (when (and (> (caar (sqlite-execute db "SELECT count(*) FROM triples WHERE subject = ? AND typeof(subject) = 'integer'"
-                                                                              (list int-val))) 0)
-                                               (or replace-approved
-                                                   (y-or-n-p (format "triples: For subject %d, existing real integer subject found.  Replace for this and others? "
-                                                                     int-val))))
-                                      (setq replace-approved t)
-                                        (sqlite-execute db "DELETE FROM triples WHERE subject = ? AND typeof(subject) = 'integer'"
-                                                        (list int-val))))
-                              (sqlite-execute db (format "UPDATE OR REPLACE triples SET %s = cast(REPLACE(%s, '\"', '') as integer) WHERE %s = ?"
-                                                         column column column)
-                                              (list string-val))))))
-                      (sqlite-select
-                       db
-                       (format "SELECT %s from triples WHERE cast(REPLACE(%s, '\"', '') as integer) > 0 AND typeof(%s) = 'text' GROUP BY %s"
-                               column column column column))))
-              '("subject" "object"))
-        (message "Upgraded all stringified integers in triple database to actual integers"))))
+      (mapc (lambda (column)
+              ;; This would all be easier if sqlite supported REGEXP, but
+              ;; instead we have to programmatically examine each string to see if it
+              ;; is an integer.
+              (mapc (lambda (row)
+                      (let ((string-val (car row)))
+                        (when (string-match (rx (seq string-start (opt ?\") (group-n 1 (1+ digit))) (opt ?\") string-end)
+                                            string-val)
+                          (message "triples: Upgrading %s with integer string value %s to a real integer" column string-val)
+                          ;; Subject transformations have to be treated
+                          ;; carefully, since they could end up duplicating
+                          ;; predicates.
+                          (let ((int-val (string-to-number (match-string 1 string-val))))
+                            (when (equal column "subject")
+                              (when (and (> (caar (sqlite-execute db "SELECT count(*) FROM triples WHERE subject = ? AND typeof(subject) = 'integer'"
+                                                                  (list int-val))) 0)
+                                         (or replace-approved
+                                             (y-or-n-p (format "triples: For subject %d, existing real integer subject found.  Replace for this and others? "
+                                                               int-val))))
+                                (setq replace-approved t)
+                                (sqlite-execute db "DELETE FROM triples WHERE subject = ? AND typeof(subject) = 'integer'"
+                                                (list int-val))))
+                            (sqlite-execute db (format "UPDATE OR REPLACE triples SET %s = cast(REPLACE(%s, '\"', '') as integer) WHERE %s = ?"
+                                                       column column column)
+                                            (list string-val))))))
+                    (sqlite-select
+                     db
+                     (format "SELECT %s from triples WHERE cast(REPLACE(%s, '\"', '') as integer) > 0 AND typeof(%s) = 'text' GROUP BY %s"
+                             column column column column))))
+            '("subject" "object"))
+      (message "Upgraded all stringified integers in triple database to actual integers"))))
 
 (provide 'triples-upgrade)
 ;; triples-upgrade ends here
