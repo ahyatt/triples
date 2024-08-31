@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "*" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    environment: Continuous Integration
+    strategy:
+      matrix:
+        emacs_version:
+          # 28.1 and 28.2 should be tested, but they are not working for reasons
+          # I haven't figured out yet, and I haven't been able to test manually
+          # for other reasons I haven't figured out yet.
+          - 29.1
+          - 29.2
+    steps:
+    - name: Set up Emacs
+      uses: jcs090218/setup-emacs@master
+      with:
+        version: ${{matrix.emacs_version}}
+
+    - name: Install Eldev
+      uses: emacs-eldev/setup-eldev@v1
+
+    - name: Check out the source code
+      uses: actions/checkout@v4
+
+    - name: Lint the project
+      run: |
+        eldev -p -dtT lint
+
+    - name: Test the project
+      run: |
+        eldev -p -dtT test
