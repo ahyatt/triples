@@ -27,7 +27,7 @@
 
 (require 'triples)
 (require 'seq)
-(require 'kv nil t)                     ;; May be absent.
+(require 'kv)
 (require 'emacsql nil t)                ;; May be absent.
 (require 'emacsql-sqlite nil t)         ;; May be absent.
 
@@ -48,11 +48,9 @@ easily debug into it.")
              (triples-close db)))
        (delete-file db-file))))
 
-(defun triples-test-connect-db ()
+(defun triples-test-open-db ()
   (interactive)
-  (defvar sql-database)
-  (let ((sql-database triples-test-db-file))
-    (sql-sqlite (format "*schema test db SQL %s*" triples-test-db-file))))
+  (sqlite-mode-open-file triples-test-db-file))
 
 (defmacro triples-deftest (name _ &rest body)
   "Create a test exercising variants of `triples-sqlite-interface'."
@@ -483,11 +481,10 @@ easily debug into it.")
 
 (ert-deftest triples-test-schema-and-data-with-same-subject ()
   (triples-test-with-temp-db
-    (triples-add-schema db 'foo '(bar))
-    (triples-set-subject db 'foo '(foo :bar "baz"))
-    (should (equal "baz" (plist-get (triples-get-subject db 'foo) :foo/bar)))
-    (triples-add-schema db 'foo '(bar))
-    (should (equal "baz" (plist-get (triples-get-subject db 'foo) :foo/bar)))))
+    (triples-add-schema db 'foo '(bar :base/unique t))
+    (triples-add-schema db 'baz '(boo :base/unique t))
+    (triples-set-subject db 'foo '(baz :boo "bwa"))
+    (should (equal "bwa" (plist-get (triples-get-subject db 'foo) :baz/boo)))))
 
 (ert-deftest triples-test-remove-schema-type ()
   (triples-test-with-temp-db
