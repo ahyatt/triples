@@ -1,5 +1,7 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
+* 0.4.1
+- Remove test files from GNU ELPA package.
 * 0.4.0
 - Add =triples-count=, to return a count of all triples.
 - Add =triples-remove-schema-type=, to delete schema and all its associated data.
