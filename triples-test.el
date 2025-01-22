@@ -27,7 +27,7 @@
 
 (require 'triples)
 (require 'seq)
-(require 'kv nil t)                     ;; May be absent.
+(require 'kv)
 (require 'emacsql nil t)                ;; May be absent.
 (require 'emacsql-sqlite nil t)         ;; May be absent.
 
@@ -48,11 +48,9 @@ easily debug into it.")
              (triples-close db)))
        (delete-file db-file))))
 
-(defun triples-test-connect-db ()
+(defun triples-test-open-db ()
   (interactive)
-  (defvar sql-database)
-  (let ((sql-database triples-test-db-file))
-    (sql-sqlite (format "*schema test db SQL %s*" triples-test-db-file))))
+  (sqlite-mode-open-file triples-test-db-file))
 
 (defmacro triples-deftest (name _ &rest body)
   "Create a test exercising variants of `triples-sqlite-interface'."
@@ -88,7 +86,7 @@ easily debug into it.")
                      '(("\"sub\"" "pred" "\"obj\"" "()")))))
     ;; Test that it replaces - this shouldn't result in two rows.
     (triples-db-insert db "sub" 'pred "obj")
-    (should (= (length (triples-db-select db)) 1))
+    (should (= (triples-count db) 1))
     ;; Test that colons in the predicate are stripped away when stored.
     (triples-db-insert db "sub" :test/pred "obj")
     (should (= (length (triples-db-select db nil 'test/pred)) 1))
@@ -103,7 +101,7 @@ easily debug into it.")
              '((sub pred obj))))
     ;; Test that properties aren't strings. They happen to be stored
     ;; differently for each system due to differences in how the inserting
-    ;; interface works.
+    ;; face works.
     (should (plistp (nth 3 (car (triples-db-select db 'sub)))))))
 
 (triples-deftest triples-test-delete ()
@@ -111,24 +109,24 @@ easily debug into it.")
     (triples-db-insert db 1 'pred 2)
     (triples-db-insert db 2 'pred 1)
     (triples-db-delete db 1)
-    (should (= 1 (length (triples-db-select db))))
+    (should (= 1 (triples-count db)))
     (should (= 0 (length (triples-db-select db 1))))
     (triples-db-insert db 1 'pred 2)
     (triples-db-delete db nil nil 2)
     (should (= 0 (length (triples-db-select db nil nil 2))))
     (triples-db-insert db 1 'pred 2)
     (triples-db-delete db nil 'pred nil)
-    (should (= 0 (length (triples-db-select db))))))
+    (should (= 0 (triples-count db)))))
 
 (triples-deftest triples-test-delete-subject-predicate-prefix ()
   (triples-test-with-temp-db
     (triples-db-insert db 1 'test/foo 2)
     (triples-db-insert db 1 'bar/bar 1)
     (triples-db-delete-subject-predicate-prefix db 1 'test)
-    (should (= 1 (length (triples-db-select db))))
+    (should (= 1 (triples-count db)))
     ;; Make sure colons are stripped.
     (triples-db-delete-subject-predicate-prefix db 1 :bar)
-    (should (= 0 (length (triples-db-select db))))))
+    (should (= 0 (triples-count db)))))
 
 (triples-deftest triples-test-select ()
   (triples-test-with-temp-db
@@ -195,38 +193,38 @@ easily debug into it.")
            (let ((triples-sqlite-interface 'builtin))
              (triples-test-with-temp-db
                (triples-add-schema db 'person
-                                     '(name :base/unique t :base/type string)
-                                     '(age :base/unique t :base/type integer))
-                 (triples-set-type db subject 'person :name "Alice Aardvark" :age 41)
+                                   '(name :base/unique t :base/type string)
+                                   '(age :base/unique t :base/type integer))
+               (triples-set-type db subject 'person :name "Alice Aardvark" :age 41)
+               (should (equal (triples-get-type db subject 'person)
+                              '(:age 41 :name "Alice Aardvark")))
+               (triples-close db)
+               (let* ((triples-sqlite-interface 'emacsql)
+                      (db (triples-connect db-file)))
                  (should (equal (triples-get-type db subject 'person)
                                 '(:age 41 :name "Alice Aardvark")))
-                 (triples-close db)
-                 (let* ((triples-sqlite-interface 'emacsql)
-                        (db (triples-connect db-file)))
-                   (should (equal (triples-get-type db subject 'person)
-                                  '(:age 41 :name "Alice Aardvark")))
-                   (triples-close db))
-                 ;; Just so the last close will work.
-                 (setq db (triples-connect db-file))))))
+                 (triples-close db))
+               ;; Just so the last close will work.
+               (setq db (triples-connect db-file))))))
 
 (ert-deftest triples-test-emacsql-builtin-compat ()
   (cl-loop for subject in '(1 a "a") do
            (let ((triples-sqlite-interface 'emacsql))
              (triples-test-with-temp-db
                (triples-add-schema db 'person
-                                     '(name :base/unique t :base/type string)
-                                     '(age :base/unique t :base/type integer))
-                 (triples-set-type db subject 'person :name "Alice Aardvark" :age 41)
+                                   '(name :base/unique t :base/type string)
+                                   '(age :base/unique t :base/type integer))
+               (triples-set-type db subject 'person :name "Alice Aardvark" :age 41)
+               (should (equal (triples-get-type db subject 'person)
+                              '(:age 41 :name "Alice Aardvark")))
+               (triples-close db)
+               (let* ((triples-sqlite-interface 'builtin)
+                      (db (triples-connect db-file)))
                  (should (equal (triples-get-type db subject 'person)
                                 '(:age 41 :name "Alice Aardvark")))
-                 (triples-close db)
-                 (let* ((triples-sqlite-interface 'builtin)
-                        (db (triples-connect db-file)))
-                   (should (equal (triples-get-type db subject 'person)
-                                  '(:age 41 :name "Alice Aardvark")))
-                   (triples-close db))
-                 ;; Just so the last close will work.
-                 (setq db (triples-connect db-file))))))
+                 (triples-close db))
+               ;; Just so the last close will work.
+               (setq db (triples-connect db-file))))))
 
 (ert-deftest triples-test-emacsql-to-sqlite-dup-fixing ()
   (let ((triples-sqlite-interface 'emacsql)
@@ -245,7 +243,6 @@ easily debug into it.")
     (should (= 2 (length (triples-get-subject db 1))))
     (triples-close db)
     (delete-file db-file)))
-    
 
 ;; After this we don't bother testing both with emacsql and the builtin sqlite,
 ;; since if the functions tested above work, it should also work for both.
@@ -281,7 +278,7 @@ easily debug into it.")
     (triples-add-schema db 'named
                         '(name :base/unique t) 'alternate-names)
     (should (equal '(:base/unique t)
-           (triples-properties-for-predicate db 'named/name)))
+                   (triples-properties-for-predicate db 'named/name)))
     (should (equal
              (triples-test-list-sort '(name alternate-names))
              (triples-test-list-sort (triples-predicates-for-type db 'named))))))
@@ -292,7 +289,7 @@ easily debug into it.")
                         '(name :base/unique t)
                         'alternate-names)
     (should (equal '(:base/unique t)
-                    (triples-properties-for-predicate db 'named/name)))
+                   (triples-properties-for-predicate db 'named/name)))
     (should-not (triples-properties-for-predicate db 'foo/bar))))
 
 (ert-deftest triples-set-type ()
@@ -331,22 +328,22 @@ easily debug into it.")
 
 (ert-deftest triples-crud ()
   (triples-test-with-temp-db
-   (triples-add-schema db 'named
-                       '(name :base/unique t)
-                       'alias)
-   (triples-add-schema db 'callable
-                       '(phone-number :base/unique t))
-   (triples-set-type db "foo" 'named :name "Name" :alias '("alias1" "alias2"))
-   (triples-set-type db "foo" 'callable :phone-number "867-5309")
-   (should (equal (triples-test-plist-sort '(:name "Name" :alias ("alias1" "alias2")))
-                  (triples-test-plist-sort (triples-get-type db "foo" 'named))))
-   (should (equal (triples-test-list-sort (triples-get-types db "foo"))
-                  (triples-test-list-sort '(callable named))))
-   (should-not (triples-get-type db "bar" 'named))
-   (should-not (triples-get-types db "bar"))
-   (triples-remove-type db "foo" 'named)
-   (should-not (triples-get-type db "foo" 'named))
-   (should (triples-get-type db "foo" 'callable))))
+    (triples-add-schema db 'named
+                        '(name :base/unique t)
+                        'alias)
+    (triples-add-schema db 'callable
+                        '(phone-number :base/unique t))
+    (triples-set-type db "foo" 'named :name "Name" :alias '("alias1" "alias2"))
+    (triples-set-type db "foo" 'callable :phone-number "867-5309")
+    (should (equal (triples-test-plist-sort '(:name "Name" :alias ("alias1" "alias2")))
+                   (triples-test-plist-sort (triples-get-type db "foo" 'named))))
+    (should (equal (triples-test-list-sort (triples-get-types db "foo"))
+                   (triples-test-list-sort '(callable named))))
+    (should-not (triples-get-type db "bar" 'named))
+    (should-not (triples-get-types db "bar"))
+    (triples-remove-type db "foo" 'named)
+    (should-not (triples-get-type db "foo" 'named))
+    (should (triples-get-type db "foo" 'callable))))
 
 (ert-deftest triples-crud-all ()
   (triples-test-with-temp-db
@@ -366,7 +363,7 @@ easily debug into it.")
   (triples-test-with-temp-db
     (triples-add-schema db 'named
                         '(name :base/unique t)
-                       'alias)
+                        'alias)
     (triples-add-schema db 'reachable 'phone)
     (triples-set-type db "foo" 'named :name "Name" :alias '("alias1" "alias2"))
     (triples-set-types db "foo" :named/name "New Name" :reachable/phone '("867-5309"))
@@ -375,10 +372,10 @@ easily debug into it.")
 
 (ert-deftest triples-single-element ()
   (triples-test-with-temp-db
-   (triples-add-schema db 'named 'name)
-   (triples-set-type db "foo" 'named :name '("Name"))
-   (should (equal '(:name ("Name"))
-                  (triples-get-type db "foo" 'named)))))
+    (triples-add-schema db 'named 'name)
+    (triples-set-type db "foo" 'named :name '("Name"))
+    (should (equal '(:name ("Name"))
+                   (triples-get-type db "foo" 'named)))))
 
 (ert-deftest triples-store-and-retrieve ()
   (triples-test-with-temp-db
@@ -392,52 +389,52 @@ easily debug into it.")
 
 (ert-deftest triples-vector ()
   (triples-test-with-temp-db
-   (triples-add-schema db 'named 'name)
-   (triples-add-schema db 'embedding '(embedding :base/unique t :base/type vector))
-   (triples-set-type db "foo" 'named :name '("Name"))
-   (triples-set-type db "foo" 'embedding :embedding [1 2 3 4 5])
-   (should (equal '(:embedding [1 2 3 4 5])
-                  (triples-get-type db "foo" 'embedding)))
-   (should-error (triples-set-type db "foo" 'embedding :embedding '(1 2 3)))))
+    (triples-add-schema db 'named 'name)
+    (triples-add-schema db 'embedding '(embedding :base/unique t :base/type vector))
+    (triples-set-type db "foo" 'named :name '("Name"))
+    (triples-set-type db "foo" 'embedding :embedding [1 2 3 4 5])
+    (should (equal '(:embedding [1 2 3 4 5])
+                   (triples-get-type db "foo" 'embedding)))
+    (should-error (triples-set-type db "foo" 'embedding :embedding '(1 2 3)))))
 
 (ert-deftest triples-cons ()
   (triples-test-with-temp-db
-   (triples-add-schema db 'data '(data :base/unique t :base/type cons))
-   (triples-set-type db "foo" 'data :data '(a (b c)))
-   (should (equal '(:data (a (b c)))
-                  (triples-get-type db "foo" 'data)))
-   (should (= 1 (length (triples-db-select db nil 'data/data))))
-   ;; Let's also make sure if we store it as a straight list triples doesn't get
-   ;; confused and try to store it as separate rows in the db.
-   (triples-set-type db "foo" 'data :data '(a b c))
-   (should (= 1 (length (triples-db-select db nil 'data/data))))))
+    (triples-add-schema db 'data '(data :base/unique t :base/type cons))
+    (triples-set-type db "foo" 'data :data '(a (b c)))
+    (should (equal '(:data (a (b c)))
+                   (triples-get-type db "foo" 'data)))
+    (should (= 1 (length (triples-db-select db nil 'data/data))))
+    ;; Let's also make sure if we store it as a straight list triples doesn't get
+    ;; confused and try to store it as separate rows in the db.
+    (triples-set-type db "foo" 'data :data '(a b c))
+    (should (= 1 (length (triples-db-select db nil 'data/data))))))
 
 (ert-deftest triples-reversed ()
   (triples-test-with-temp-db
-   (triples-add-schema db 'named
-                       '(name :base/unique t)
-                       '(locale :base/unique t))
-   (triples-add-schema db 'locale
-                       '(used-in-name :base/virtual-reversed named/locale))
-   (triples-set-type db "en/US" 'locale nil)
-   (should-not (triples-get-type db "en/US" 'locale))
-   (triples-set-type db "foo" 'named :name "foo" :locale "en/US")
-   (should (equal '(:used-in-name ("foo"))
-                  (triples-get-type db "en/US" 'locale)))
-   (should-error (triples-set-type db "en/US" 'locale :used-in-name '("bar")))))
+    (triples-add-schema db 'named
+                        '(name :base/unique t)
+                        '(locale :base/unique t))
+    (triples-add-schema db 'locale
+                        '(used-in-name :base/virtual-reversed named/locale))
+    (triples-set-type db "en/US" 'locale nil)
+    (should-not (triples-get-type db "en/US" 'locale))
+    (triples-set-type db "foo" 'named :name "foo" :locale "en/US")
+    (should (equal '(:used-in-name ("foo"))
+                   (triples-get-type db "en/US" 'locale)))
+    (should-error (triples-set-type db "en/US" 'locale :used-in-name '("bar")))))
 
 (ert-deftest triples-with-predicate ()
   (triples-test-with-temp-db
-   (triples-add-schema db 'named '(name))
-   (should-not (triples-with-predicate db 'named/name))
-   (triples-set-type db "foo" 'named :name "My Name Is Fred Foo")
-   (triples-set-type db "bar" 'named :name "My Name Is Betty Bar")
-   (should (equal
-            (triples-test-list-sort
-             '(("bar" named/name "My Name Is Betty Bar" nil)
-               ("foo" named/name "My Name Is Fred Foo" nil)))
-            (triples-test-list-sort
-             (triples-with-predicate db 'named/name))))))
+    (triples-add-schema db 'named '(name))
+    (should-not (triples-with-predicate db 'named/name))
+    (triples-set-type db "foo" 'named :name "My Name Is Fred Foo")
+    (triples-set-type db "bar" 'named :name "My Name Is Betty Bar")
+    (should (equal
+             (triples-test-list-sort
+              '(("bar" named/name "My Name Is Betty Bar" nil)
+                ("foo" named/name "My Name Is Fred Foo" nil)))
+             (triples-test-list-sort
+              (triples-with-predicate db 'named/name))))))
 
 (ert-deftest triples-subjects-of-type ()
   (triples-test-with-temp-db
@@ -463,18 +460,18 @@ easily debug into it.")
 
 (ert-deftest triples-move-subject ()
   (triples-test-with-temp-db
-   (triples-add-schema db 'named '(name :base/unique t))
-   (triples-add-schema db 'friend '(id :base/unique t))
-   (triples-set-subject db 123 '(named :name "Ada Lovelace"))
-   (triples-set-subject db 456 '(named :name "Michael Faraday")
-                        '(friend :id 123))
-   (triples-set-subject db 987 '(named :name "To Be Deleted"))
-   (should-error (triples-move-subject db 123 987))
-   (triples-delete-subject db 987)
-   (triples-move-subject db 123 987)
-   (should-not (triples-get-subject db 123))
-   (should (equal "Ada Lovelace" (plist-get (triples-get-subject db 987) :named/name)))
-   (should (equal 987 (plist-get (triples-get-subject db 456) :friend/id)))))
+    (triples-add-schema db 'named '(name :base/unique t))
+    (triples-add-schema db 'friend '(id :base/unique t))
+    (triples-set-subject db 123 '(named :name "Ada Lovelace"))
+    (triples-set-subject db 456 '(named :name "Michael Faraday")
+                         '(friend :id 123))
+    (triples-set-subject db 987 '(named :name "To Be Deleted"))
+    (should-error (triples-move-subject db 123 987))
+    (triples-delete-subject db 987)
+    (triples-move-subject db 123 987)
+    (should-not (triples-get-subject db 123))
+    (should (equal "Ada Lovelace" (plist-get (triples-get-subject db 987) :named/name)))
+    (should (equal 987 (plist-get (triples-get-subject db 456) :friend/id)))))
 
 (ert-deftest triples-test-subjects-with-predicate-object-unique-subject ()
   (triples-test-with-temp-db
@@ -484,17 +481,28 @@ easily debug into it.")
 
 (ert-deftest triples-test-schema-and-data-with-same-subject ()
   (triples-test-with-temp-db
-   (triples-add-schema db 'foo '(bar))
-   (triples-set-subject db 'foo '(foo :bar "baz"))
-   (should (equal "baz" (plist-get (triples-get-subject db 'foo) :foo/bar)))
-   (triples-add-schema db 'foo '(bar))
-   (should (equal "baz" (plist-get (triples-get-subject db 'foo) :foo/bar)))))
+    (triples-add-schema db 'foo '(bar :base/unique t))
+    (triples-add-schema db 'baz '(boo :base/unique t))
+    (triples-set-subject db 'foo '(baz :boo "bwa"))
+    (should (equal "bwa" (plist-get (triples-get-subject db 'foo) :baz/boo)))))
+
+(ert-deftest triples-test-remove-schema-type ()
+  (triples-test-with-temp-db
+    (should (= 0 (triples-count db)))
+    (triples-add-schema db 'named '(name))
+    (triples-set-type db "foo" 'named :name "My Name Is Fred Foo")
+    (triples-remove-schema-type db 'named)
+    (should-not (triples-get-type db 'named 'base/type))
+    (should-not (triples-get-type db "foo" 'named))
+    (should-error (triples-set-type db "foo" 'named :name "My Name Is Fred Foo"))
+    (ert-info ((format "Triples: %s" (triples-db-select db)))
+      (should (= 0 (triples-count db))))))
 
 (ert-deftest triples-readme ()
   (triples-test-with-temp-db
     (triples-add-schema db 'person
-       '(name :base/unique t :base/type string)
-       '(age :base/unique t :base/type integer))
+                        '(name :base/unique t :base/type string)
+                        '(age :base/unique t :base/type integer))
     (triples-add-schema db 'employee
                         '(id :base/unique t :base/type integer)
                         '(manager :base/unique t)

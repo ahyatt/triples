@@ -19,29 +19,33 @@
 ;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
 
 ;;; Commentary:
-;; This provides backup functionality. The information about how and when to do
+;; This provides backup functionality.  The information about how and when to do
 ;; backups lives in the database itself, on a special entity `database'.
 
 (require 'triples)
 
+;;; Code:
+
 (defun triples-backups-setup (db num-to-keep strategy)
   "Set DB's backup strategy.
-NUM-TO-KEEP is the number of backup files to keep. Older ones are
-removed. STRATEGY is a symbol that corresponds to a function
-`triples-backups-strategy-STRATEGY'. This function must always be
+NUM-TO-KEEP is the number of backup files to keep.  Older ones
+are removed.  STRATEGY is a symbol that corresponds to a function
+`triples-backups-strategy-STRATEGY'.  This function must always be
 loaded before any client of this db calls
 `triples-backups-maybe-backup', so adding your own may not always
 be appropriate."
   (triples-with-transaction db
-    (triples-add-schema db 'backup '(num-to-keep :base/unique t :base/type integer)
-                        '(strategy :base/unique t :base/type symbol)
-                        '(last-update-time :base/unique t :base/type integer))
-    (triples-set-type db 'database 'backup :num-to-keep num-to-keep
-                      :strategy strategy :last-update-time (time-convert (current-time) 'integer))))
+                            (triples-add-schema db 'backup '(num-to-keep :base/unique t :base/type integer)
+                                                '(strategy :base/unique t :base/type symbol)
+                                                '(last-update-time :base/unique t :base/type integer))
+                            (triples-set-type db 'database 'backup :num-to-keep num-to-keep
+                                              :strategy strategy :last-update-time (time-convert (current-time) 'integer))))
 
 (defun triples-backups-configuration (db)
-  "Returns the backup configuration set by `triples-backups-setup'.
-If no one has ever run that on this database, `nil' is returned."
+  "Return the backup configuration set by `triples-backups-setup'.
+If no one has ever run that on this database, nil is returned.
+
+DB is the database to get the configuration for."
   (triples-get-type db 'database 'backup))
 
 (defun triples-backups-last-update-time (db)
@@ -57,7 +61,7 @@ default to the standard triple database given in
          (strategy-func (intern (format "triples-backups-strategy-%s"
                                         (plist-get backup-info :strategy)))))
     (unless backup-info
-      (error "`triples-backups-setup' needs to be called on this database before trying to back up."))
+      (error "`triples-backups-setup' needs to be called on this database before trying to back up"))
     (unless (fboundp strategy-func)
       (display-warning
        'triples

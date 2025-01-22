@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/triples
 ;; Package-Requires: ((seq "2.0") (emacs "28.1"))
 ;; Keywords: triples, kg, data, sqlite
-;; Version: 0.3.5
+;; Version: 0.4.1
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 2 of the
@@ -22,11 +22,11 @@
 
 ;;; Commentary:
 ;; Triples is a library implementing a data storage based on the idea of
-;; triples: subject, predicate, objects, plus some extra metadata. This data
+;; triples: subject, predicate, objects, plus some extra metadata.  This data
 ;; structure provides a way to store data according to an extensible schema, and
 ;; provide an API offering two-way links between all information stored.
 ;;
-;; This package requires either emacs 29 or the emacsql package to be installed.
+;; This package requires either Emacs 29 or the emacsql package to be installed.
 
 
 (require 'cl-lib)
@@ -48,18 +48,19 @@
       'builtin
     'emacsql)
   "The interface to sqlite to use.
-Either `builtin' or `emacsql'. Defaults to builtin when
-available. Builtin is available when the version is Emacs 29 or
+Either `builtin' or `emacsql'.  Defaults to builtin when
+available.  Builtin is available when the version is Emacs 29 or
 greater, and emacsql is usable when the `emacsql' package is
 installed.")
 
 (defconst triples-sqlite-executable "sqlite3"
-  "If using emacs 29 builtin sqlite, this specifices the executable.
+  "If using Emacs 29 builtin sqlite, this specifices the executable.
 It is invoked to make backups.")
 
 (defconst triples-default-database-filename (locate-user-emacs-file "triples.db")
-  "The default filename triples database. If no database is
-specified, this file is used.")
+  "The default filename triples database.
+
+If no database is specified, this file is used.")
 
 (defmacro triples-with-transaction (db &rest body)
   "Create a transaction using DB, executing BODY.
@@ -71,11 +72,11 @@ The transaction will abort if an error is thrown."
   "Rebuild the builtin database DB.
 This is used in upgrades and when problems are detected."
   (triples-with-transaction
-      db
-      (sqlite-execute db "ALTER TABLE triples RENAME TO triples_old")
-      (triples-setup-table-for-builtin db)
-      (sqlite-execute db "INSERT INTO triples (subject, predicate, object, properties) SELECT DISTINCT subject, predicate, object, properties FROM triples_old")
-      (sqlite-execute db "DROP TABLE triples_old")))
+    db
+    (sqlite-execute db "ALTER TABLE triples RENAME TO triples_old")
+    (triples-setup-table-for-builtin db)
+    (sqlite-execute db "INSERT INTO triples (subject, predicate, object, properties) SELECT DISTINCT subject, predicate, object, properties FROM triples_old")
+    (sqlite-execute db "DROP TABLE triples_old")))
 
 (defun triples-maybe-upgrade-to-builtin (db)
   "Check to see if DB needs to be upgraded from emacsql to builtin."
@@ -84,7 +85,7 @@ This is used in upgrades and when problems are detected."
   (when (> (caar (sqlite-select db "SELECT COUNT(*) FROM triples WHERE properties = '(:t t)'"))
            0)
     (if (> (caar (sqlite-select db "SELECT COUNT(*) FROM triples WHERE properties = '()'"))
-            0)
+           0)
         (progn
           (message "triples: detected data written with both builtin and emacsql, upgrading and removing duplicates")
           ;; Where we can, let's just upgrade the old data.  However, sometimes we cannot due to duplicates.
@@ -98,10 +99,10 @@ This is used in upgrades and when problems are detected."
   "Connect to the database FILE and make sure it is populated.
 If FILE is nil, use `triples-default-database-filename'."
   (unless (pcase-exhaustive triples-sqlite-interface
-              ('builtin
-               (and (fboundp 'sqlite-available-p) (sqlite-available-p)))
-              ('emacsql (require 'emacsql nil t)))
-    (error "The triples package requires either Emacs 29 or the emacsql package to be installed."))
+            ('builtin
+             (and (fboundp 'sqlite-available-p) (sqlite-available-p)))
+            ('emacsql (require 'emacsql nil t)))
+    (error "The triples package requires either Emacs 29 or the emacsql package to be installed"))
   (let ((file (or file triples-default-database-filename)))
     (pcase triples-sqlite-interface
       ('builtin (let* ((db (sqlite-open file)))
@@ -154,19 +155,19 @@ The first argument is unused, but later may be used to specify
 the running database.
 
 This uses the same backup location and names as configured in
-variables such as `backup-directory-alist'. Due to the fact that
+variables such as `backup-directory-alist'.  Due to the fact that
 the database is never opened as a buffer, normal backups will not
 work, therefore this function must be called instead.
 
 Th DB argument is currently unused, but may be used in the future
-if emacs's native sqlite gains a backup feature.
+if Emacs's native sqlite gains a backup feature.
 
 FILENAME can be nil, if so `triples-default-database-filename'
 will be used.
 
 This also will clear excess backup files, according to
 NUM-TO-KEEP, which specifies how many backup files at max should
-exist at any time. Older backups are the ones that are deleted."
+exist at any time.  Older backups are the ones that are deleted."
   (let ((filename (expand-file-name (or filename triples-default-database-filename))))
     (call-process (pcase triples-sqlite-interface
                     ('builtin triples-sqlite-executable)
@@ -190,10 +191,11 @@ exist at any time. Older backups are the ones that are deleted."
   (intern (format ":%s" sym)))
 
 (defun triples-standardize-val (val)
-  "If VAL is a string, return it as enclosed in quotes
+  "If VAL is a string, return it as enclosed in quotes.
+
 This is done to have compatibility with the way emacsql stores
-values. Turn a symbol into a string as well, but not a quoted
-one, because sqlite cannot handle symbols. Integers do not need
+values.  Turn a symbol into a string as well, but not a quoted
+one, because sqlite cannot handle symbols.  Integers do not need
 to be stringified."
   ;; Do not print control characters escaped - we want to get things out exactly
   ;; as we put them in.
@@ -211,14 +213,14 @@ This imitates the way emacsql returns items, with strings
 becoming either symbols, lists, or strings depending on whether
 the string itself is wrapped in quotes."
   (if (numberp result)
-        result
-      (read result)))
+      result
+    (read result)))
 
 (defun triples-db-insert (db subject predicate object &optional properties)
   "Insert triple to DB: SUBJECT, PREDICATE, OBJECT with PROPERTIES.
 This is a SQL replace operation, because we don't want any
 duplicates; if the triple is the same, it has to differ at least
-with PROPERTIES. This is a low-level function that bypasses our
+with PROPERTIES.  This is a low-level function that bypasses our
 normal schema checks, so should not be called from client programs."
   (unless (symbolp predicate)
     (error "Predicates in triples must always be symbols"))
@@ -243,8 +245,8 @@ normal schema checks, so should not be called from client programs."
 
 (defun triples--emacsql-andify (wc)
   "In emacsql where clause WC, insert `:and' between query elements.
-Returns the new list with the added `:and.'s. The first element
-MUST be there `:where' clause. This does reverse the clause
+Returns the new list with the added `:and.'s.  The first element
+MUST be there `:where' clause.  This does reverse the clause
 elements, but it shouldn't matter."
   (cons (car wc) ;; the :where clause
         (let ((clauses (cdr wc))
@@ -257,7 +259,10 @@ elements, but it shouldn't matter."
 
 (defun triples-db-delete (db &optional subject predicate object properties)
   "Delete triples matching SUBJECT, PREDICATE, OBJECT, PROPERTIES.
-If any of these are nil, they will not selected for. If you set
+
+DB is the database to delete from.
+
+If any of these are nil, they will not selected for.  If you set
 all to nil, everything will be deleted, so be careful!"
   (pcase triples-sqlite-interface
     ('builtin (sqlite-execute
@@ -290,22 +295,27 @@ all to nil, everything will be deleted, so be careful!"
               (seq-filter #'identity (list subject predicate object properties)))))))
 
 (defun triples-db-delete-subject-predicate-prefix (db subject pred-prefix)
-  "Delete triples matching SUBJECT and predicates with PRED-PREFIX."
+  "Delete triples matching SUBJECT and predicates with PRED-PREFIX.
+
+DB is the database to delete from."
   (unless (symbolp pred-prefix)
     (error "Predicates in triples must always be symbols"))
   (pcase triples-sqlite-interface
     ('builtin (sqlite-execute db "DELETE FROM triples WHERE subject = ? AND predicate LIKE ?"
-                  (list (triples-standardize-val subject)
-                        (format "%s/%%" (triples--decolon pred-prefix)))))
+                              (list (triples-standardize-val subject)
+                                    (format "%s/%%" (triples--decolon pred-prefix)))))
     ('emacsql (emacsql db [:delete :from triples :where (= subject $s1) :and (like predicate $r2)]
                        subject (format "%s/%%" (triples--decolon pred-prefix))))))
 
 (defun triples-db-select-pred-op (db pred op val &optional properties)
-  "Select triples matching predicates with PRED having OP relation to VAL.
-OP is a comparison operator, and VAL is the value to compare. OP,
-the comparison operator, is a symbol for a standard numerical
-comparison such as `=', `!=', `>', or, when `val' is a strings,
-`like'.  All alphabetic comparison is case insensitive.
+  "Select matching predicates with PRED having OP relation to VAL.
+
+DB is the database to select from.
+
+OP is a comparison operator, and VAL is the value to compare.  It
+is a symbol for a standard numerical comparison such as `=',
+`!=', `>', or, when `val' is a strings, `like'.  All alphabetic
+comparison is case insensitive.
 
 If PROPERTIES is given, triples must match the given properties."
   (unless (symbolp pred)
@@ -313,7 +323,7 @@ If PROPERTIES is given, triples must match the given properties."
   (let ((pred (triples--decolon pred)))
     (pcase triples-sqlite-interface
       ('builtin
-       (mapcar (lambda (row) (mapcar #'triples-standardize-result row)) 
+       (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
                (sqlite-select
                 db
                 (concat "SELECT * FROM triples WHERE predicate = ? AND  "
@@ -344,19 +354,22 @@ If PROPERTIES is given, triples must match the given properties."
                 pred val properties)))))
 
 (defun triples-db-select-pred-prefix (db subject pred-prefix)
-  "Return rows matching SUBJECT and PRED-PREFIX."
+  "Return rows in DB matching SUBJECT and PRED-PREFIX."
   (pcase triples-sqlite-interface
     ('builtin (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
-          (sqlite-select db "SELECT * FROM triples WHERE subject = ? AND predicate LIKE ?"
-                         (list (triples-standardize-val subject)
-                               (format "%s/%%" pred-prefix)))))
+                      (sqlite-select db "SELECT * FROM triples WHERE subject = ? AND predicate LIKE ?"
+                                     (list (triples-standardize-val subject)
+                                           (format "%s/%%" pred-prefix)))))
     ('emacsql (emacsql db [:select * :from triples :where (= subject $s1) :and (like predicate $r2)]
                        subject (format "%s/%%" pred-prefix)))))
 
 (defun triples-db-select (db &optional subject predicate object properties selector)
   "Return rows matching SUBJECT, PREDICATE, OBJECT, PROPERTIES.
+
+DB is the database to select from.
+
 If any of these are nil, they are not included in the select
-statement. The SELECTOR is list of symbols subject, precicate,
+statement.  The SELECTOR is list of symbols subject, precicate,
 object, properties to retrieve or nil for *."
   (pcase triples-sqlite-interface
     ('builtin (mapcar (lambda (row) (mapcar #'triples-standardize-result row))
@@ -393,12 +406,18 @@ object, properties to retrieve or nil for *."
                                  (when properties `((= properties ,(intern (format "$s%d" (cl-incf n)))))))))))
               (seq-filter #'identity (list subject predicate object properties)))))))
 
+(defun triples-db-count (db)
+  "Return the number of triples in DB."
+  (pcase triples-sqlite-interface
+    ('builtin (caar (sqlite-select db "SELECT COUNT(*) FROM triples")))
+    ('emacsql (caar (emacsql db [:select (funcall count *) :from triples])))))
+
 (defun triples-move-subject (db old-subject new-subject)
   "Replace all instance in DB of OLD-SUBJECT to NEW-SUBJECT.
 Any references to OLD-SUBJECT as an object are also replaced.
 This will throw an error if there is an existing subject
 NEW-SUBJECT with at least one equal property (such as type
-markers). But if there are no commonalities, the OLD-SUBJECT is
+markers).  But if there are no commonalities, the OLD-SUBJECT is
 merged into NEW-SUBJECT."
   (pcase triples-sqlite-interface
     ('builtin
@@ -414,10 +433,10 @@ merged into NEW-SUBJECT."
               (signal 'error err))))
     ('emacsql
      (emacsql-with-transaction db
-         (emacsql db [:update triples :set (= subject $s1) :where (= subject $s2)]
-                  new-subject old-subject)
-         (emacsql db [:update triples :set (= object $s1) :where (= object $s2)]
-                  new-subject old-subject)))))
+       (emacsql db [:update triples :set (= subject $s1) :where (= subject $s2)]
+                new-subject old-subject)
+       (emacsql db [:update triples :set (= object $s1) :where (= object $s2)]
+                new-subject old-subject)))))
 
 ;; Code after this point should not call sqlite or emacsql directly. If any more
 ;; calls are needed, put them in a defun, make it work for sqlite and emacsql,
@@ -440,24 +459,24 @@ merged into NEW-SUBJECT."
 (defun triples--add (db op)
   "Perform OP on DB."
   (pcase (car op)
-      ('replace-subject
-       (mapc
-        (lambda (sub)
-          (triples-db-delete db sub))
-        (triples--subjects (cdr op))))
-      ('replace-subject-type
-       (mapc (lambda (sub-triples)
-               (mapc (lambda (type)
-                       ;; We have to ignore base, which keeps type information in general.
-                       (unless (eq type 'base)
-                         (triples-db-delete-subject-predicate-prefix db (car sub-triples) type)))
-                     (seq-uniq
-                      (mapcar #'car (mapcar #'triples-combined-to-type-and-prop
-                                                     (mapcar #'cl-second (cdr sub-triples)))))))
-             (triples--group-by-subjects (cdr op)))))
+    ('replace-subject
+     (mapc
+      (lambda (sub)
+        (triples-db-delete db sub))
+      (triples--subjects (cdr op))))
+    ('replace-subject-type
+     (mapc (lambda (sub-triples)
+             (mapc (lambda (type)
+                     ;; We have to ignore base, which keeps type information in general.
+                     (unless (eq type 'base)
+                       (triples-db-delete-subject-predicate-prefix db (car sub-triples) type)))
+                   (seq-uniq
+                    (mapcar #'car (mapcar #'triples-combined-to-type-and-prop
+                                          (mapcar #'cl-second (cdr sub-triples)))))))
+           (triples--group-by-subjects (cdr op)))))
   (mapc (lambda (triple)
           (apply #'triples-db-insert db triple))
-          (cdr op)))
+        (cdr op)))
 
 (defun triples-properties-for-predicate (db cpred)
   "Return the properties in DB for combined predicate CPRED as a plist."
@@ -484,8 +503,8 @@ definitions."
           (triples--plist-mapc (lambda (pred-prop val)
                                  (let ((f (intern (format "triples-verify-%s-compliant"
                                                           (triples--decolon pred-prop)))))
-                                 (if (fboundp f)
-                                     (funcall f val triple))))
+                                   (if (fboundp f)
+                                       (funcall f val triple))))
                                (cdr (assoc (nth 1 triple) prop-schema-alist)))) triples))
 
 (defun triples-add-schema (db type &rest props)
@@ -506,24 +525,44 @@ them."
                               (pcombined (intern (format "%s/%s" type pname))))
                          (cons (list type 'schema/property pname)
                                (seq-filter #'identity
-                                (triples--plist-mapcar
-                                   (lambda (k v)
-                                     ;; If V is nil, that's the default, so don't
-                                     ;; store anything.
-                                     (when v
-                                       (list pcombined (triples--decolon k) v)))
-                                   pprops))))))))
+                                           (triples--plist-mapcar
+                                            (lambda (k v)
+                                              ;; If V is nil, that's the default, so don't
+                                              ;; store anything.
+                                              (when v
+                                                (list pcombined (triples--decolon k) v)))
+                                            pprops))))))))
+
+(defun triples-remove-schema-type (db type)
+  "Remove the schema for TYPE in DB, and all associated data."
+  (triples-with-transaction
+    db
+    (let ((subjects (triples-subjects-of-type db type)))
+      (mapc (lambda (subject)
+              (triples-remove-type db subject type))
+            subjects)
+      (triples-remove-type db type 'schema))))
+
+(defun triples-count (db)
+  "Return the number of triples in DB."
+  (triples-db-count db))
 
 (defun triples-set-type (db subject type &rest properties)
   "Create operation to replace PROPERTIES for TYPE for SUBJECT in DB.
 PROPERTIES is a plist of properties, without TYPE prefixes."
   (let* ((prop-schema-alist
-          (mapcar (lambda (prop)
-                    (cons (triples--decolon prop)
-                          (triples-properties-for-predicate
-                           db
-                           (triples-type-and-prop-to-combined type prop))))
-                  (triples--plist-mapcar (lambda (k _) k) properties)))
+          ;; If the type doesn't exist, there is no schema to check against.
+          (when (triples-get-type db type 'schema)
+            (triples--plist-mapcar
+             (lambda (k v)
+               (cons (triples--decolon k) v))
+             (triples-properties-for-predicate db (triples-type-and-prop-to-combined type 'schema/property)))
+            (mapcar (lambda (prop)
+                      (cons (triples--decolon prop)
+                            (triples-properties-for-predicate
+                             db
+                             (triples-type-and-prop-to-combined type prop))))
+                    (triples--plist-mapcar (lambda (k _) k) properties))))
          (op (triples--set-type-op subject type properties prop-schema-alist)))
     (triples-verify-schema-compliant
      (cdr op)
@@ -535,30 +574,32 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
     (triples--add db op)))
 
 (defmacro triples--eval-when-fboundp (sym form)
-  "Delay macroexpansion to runtime if SYM is not yet `fboundp'."
+  "Delay macroexpansion to runtime if SYM is not yet `fboundp'.
+FORM is the code to delay."
   (declare (indent 1) (debug (symbolp form)))
   (if (fboundp sym)
       form
     `(eval ',form t)))
 
 (defun triples--with-transaction (db body-fun)
+  "Wrap BODY-FUN in a transaction for DB."
   (pcase triples-sqlite-interface
-      ('builtin  (condition-case err
-                     (progn
-                       (sqlite-transaction db)
-                       (funcall body-fun)
-                       (sqlite-commit db))
-                   (error (sqlite-rollback db)
-                          (signal (car err) (cdr err)))))
-      ('emacsql (funcall (triples--eval-when-fboundp emacsql-with-transaction
-                           (lambda (db body-fun)
-                             (emacsql-with-transaction db (funcall body-fun))))
-                         db body-fun))))
+    ('builtin  (condition-case err
+                   (progn
+                     (sqlite-transaction db)
+                     (funcall body-fun)
+                     (sqlite-commit db))
+                 (error (sqlite-rollback db)
+                        (signal (car err) (cdr err)))))
+    ('emacsql (funcall (triples--eval-when-fboundp emacsql-with-transaction
+                         (lambda (db body-fun)
+                           (emacsql-with-transaction db (funcall body-fun))))
+                       db body-fun))))
 
 (defun triples-set-types (db subject &rest combined-props)
   "Set all data for types in COMBINED-PROPS in DB for SUBJECT.
 COMBINED-PROPS is a plist which takes combined properties such as
-:named/name and their values. All other data related to the types
+:named/name and their values.  All other data related to the types
 given in the COMBINED-PROPS will be removed."
   (let ((type-to-plist (make-hash-table)))
     (triples--plist-mapc
@@ -587,13 +628,13 @@ broken down into separate rows, and when to leave as is."
                    (if (and
                         (listp v)
                         (not (plist-get prop-schema :base/unique)))
-                     (cl-loop for e in v for i from 0
-                              collect
-                              (list subject
-                                    (triples-type-and-prop-to-combined type prop)
-                                    e
-                                    (list :index i)))
-                   (list (list subject (triples-type-and-prop-to-combined type prop) v)))))
+                       (cl-loop for e in v for i from 0
+                                collect
+                                (list subject
+                                      (triples-type-and-prop-to-combined type prop)
+                                      e
+                                      (list :index i)))
+                     (list (list subject (triples-type-and-prop-to-combined type prop) v)))))
                properties))))
 
 (defun triples-get-type (db subject type)
@@ -650,10 +691,10 @@ broken down into separate rows, and when to leave as is."
   "From DB set properties of SUBJECT to TYPE-VALS-CONS data.
 TYPE-VALS-CONS is a list of conses, combining a type and a plist of values."
   (triples-with-transaction db
-    (triples-delete-subject db subject)
-    (mapc (lambda (cons)
-            (apply #'triples-set-type db subject cons))
-          type-vals-cons)))
+                            (triples-delete-subject db subject)
+                            (mapc (lambda (cons)
+                                    (apply #'triples-set-type db subject cons))
+                                  type-vals-cons)))
 
 (defun triples-delete-subject (db subject)
   "Delete all data in DB associated with SUBJECT.
@@ -733,7 +774,10 @@ FN must take two arguments: the key and the value."
            triple type (type-of (nth 2 triple)))))
 
 (defun triples-verify-base/virtual-reversed-compliant (_ triple)
-  "Virtual reversed properties shouldn't be set manually, so are never compliant."
+  "Reject any TRIPLE with a virtual reversed property.
+
+Virtual reversed properties shouldn't be set manually, so are
+never compliant."
   (error "Invalid triple found: %s, should not be setting a `base/virtual-reversed' property"
          triple))
 
