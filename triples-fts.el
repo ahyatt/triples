@@ -30,63 +30,90 @@
 (require 'sqlite)
 (require 'seq)
 
-(defun triples-fts-setup (db &optional force)
-  "Ensure DB has a FTS table.
-As long as the FTS table exists, this will not try to recreate
-it. If FORCE is non-nil, then the FTS and all triggers will be
-recreated and repopulated."
-  (let ((fts-existed (sqlite-select db "SELECT name FROM sqlite_master WHERE type='table' AND name='triples_fts'")))
-    (when force (sqlite-execute db "DROP TABLE triples_fts"))
-    (sqlite-execute db "CREATE VIRTUAL TABLE IF NOT EXISTS triples_fts USING fts5 (subject, predicate, object, content=triples, content_rowid=rowid)")
-    ;; Triggers that will update triples_fts, but only for text objects.
-    ;; New rows:
-    (when force (sqlite-execute db "DROP TRIGGER IF EXISTS triples_fts_insert"))
-    (sqlite-execute db "CREATE TRIGGER IF NOT EXISTS triples_fts_insert AFTER INSERT ON triples
-      WHEN new.object IS NOT NULL and typeof(new.object) = 'text'
-      BEGIN
-        INSERT INTO triples_fts (rowid, subject, predicate, object) VALUES (new.rowid, new.subject, new.predicate, new.object);
-      END")
-    ;; Updated rows:
-    (when force (sqlite-execute db "DROP TRIGGER IF EXISTS triples_fts_update"))
-    (sqlite-execute db "CREATE TRIGGER IF NOT EXISTS triples_fts_update AFTER UPDATE ON triples
-        WHEN new.object IS NOT NULL AND typeof(new.object) = 'text'
-        BEGIN
-          INSERT INTO triples_fts (triples_fts, rowid, subject, predicate, object) VALUES ('delete', old.rowid, old.subject, old.predicate, old.object);
-          INSERT INTO triples_fts (rowid, subject, predicate, object) VALUES (new.rowid, new.subject, new.predicate, new.object);
-        END")
-    ;; Deleted rows:
-    (when force (sqlite-execute db "DROP TRIGGER IF EXISTS triples_fts_delete"))
-    (sqlite-execute db "CREATE TRIGGER IF NOT EXISTS triples_fts_delete AFTER DELETE ON triples
-      WHEN old.object IS NOT NULL AND typeof(old.object) = 'text'
-      BEGIN
-        INSERT INTO triples_fts (triples_fts, subject, predicate, object) VALUES ('delete', old.subject, old.predicate, old.object);
-      END")
-    (if (or force (not fts-existed)) (triples-fts-rebuild db))))
+(defun triples-fts-decolon-to-str (pred)
+  "Convert a predicate symbol PRED to a string, removing the colon."
+  (replace-regexp-in-string (rx string-start ?:) "" (symbol-name pred)))
+
+(defun triples-fts-set-predicate-abbrevs (db abbrevs)
+  "Set the predicate abbreviations to ABBREVS
+ABBREVS is an alist of abbreviations to type/predicates, such as
+((\"tag\" . 'tagged/tag)).
+
+This stores the abbreviation in the database DB."
+  (triples-with-transaction
+    db
+    (triples-add-schema db 'fts '(abbrev :base/type string :base/unique t))
+    (triples-add-schema db 'fts-abbrev '(predicate :base/virtual-reversed fts/abbrev))
+    (dolist (abbrev abbrevs)
+      (let* ((props (triples-properties-for-predicate db (cdr abbrev))))
+        (unless props
+          (error "Predicate %s does not exist" (cdr abbrev)))
+        (unless (eq (plist-get props :base/type) 'string)
+          (error "Predicate %s is not a string" (cdr abbrev)))
+        (triples-set-type db (symbol-name (cdr abbrev)) 'fts :abbrev (car abbrev))))))
+
+(defun triples-fts-get-predicate-for-abbrev (db abbrev)
+  "Get the predicate for ABBREV from the database DB.
+Will return the predicate as a string, or nil if not found."
+  (car (plist-get (triples-get-type db abbrev 'fts-abbrev) :predicate)))
 
 (defun triples-fts-rebuild (db)
   "Rebuild the FTS table for DB."
   (sqlite-execute db "INSERT INTO triples_fts (triples_fts) VALUES ('rebuild')"))
 
+(defun triples-fts--transform-query (query)
+  "Rewrite abbreviations in QUERY based on `triples-fts-predicate-abbrevs`.
+
+E.g. if `triples-fts-predicate-abbrevs` is '((\"tag\" . \"tagged/tag\")),
+then:
+   \"tag:foo urgent\" ==> \"predicate:\"tagged/tag\" object:\"foo\" urgent\"."
+  ;; Very naive approach: split by whitespace, look for "prefix:rest".
+  (let ((words (split-string query)))
+    (mapconcat
+     (lambda (w)
+       (if (string-match "^\\([^:]+\\):\\(.*\\)$" w)
+           (let* ((prefix (match-string 1 w))
+                  (rest   (match-string 2 w))
+                  (full   (cdr (assoc prefix triples-fts-predicate-abbrevs))))
+             (if full
+                 ;; Example: "tag" => "tagged/tag", rest => "foo"
+                 (format "predicate:\"%s\" object:\"%s\"" full rest)
+               w))  ; No known abbreviation; just leave as-is.
+         w))
+     words
+     " ")))
+
 (defun triples-fts-query-subject (db query &optional predicate)
   "Query DB with QUERY, returning only subjects.
 
-Returns a list of subjects whose objects match the query, sorted by most
-relevant to least.  PREDICATE can be passed to filter the results to
-just objects with a certain predicate."
+If PREDICATE is provided, we restrict to that single predicate in
+the FTS.  Otherwise we do a full table match.
+
+If `triples-fts-predicate-abbrevs` is set, then we also expand
+user abbreviations like `tag:xyz` => `predicate:\"tagged/tag\" object:\"xyz\"`."
   (seq-uniq
    (mapcar
     #'triples-standardize-result
-    (mapcar #'car
-            (sqlite-select
-             db
-             (if predicate
-                 "SELECT subject FROM triples_fts WHERE predicate = ? AND triples_fts MATCH ? ORDER BY rank"
-               "SELECT subject FROM triples_fts WHERE triples_fts MATCH ? ORDER BY rank")
-             (if predicate
-                 (list (replace-regexp-in-string
-                        (rx (seq string-start ?:))
-                        "" (symbol-name predicate)) query)
-               (list query)))))))
+    (mapcar
+     #'car
+     (sqlite-select
+      db
+      (if predicate
+          ;; If we *also* want the user to be able to pass `predicate` explicitly:
+          "SELECT subject FROM triples_fts
+           WHERE predicate = ? AND triples_fts MATCH ?
+           ORDER BY rank"
+        ;; Otherwise, do no predicate filter:
+        "SELECT subject FROM triples_fts
+         WHERE triples_fts MATCH ?
+         ORDER BY rank")
+      (if predicate
+          (list (replace-regexp-in-string
+                 (rx string-start ?:)
+                 ""
+                 (symbol-name predicate))
+                (triples-fts--transform-query query))
+        (list (triples-fts--transform-query query))))))))
 
 (provide 'triples-fts)
 
