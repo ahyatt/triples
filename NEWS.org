@@ -2,6 +2,7 @@ TITLE: Changelog for the triples module for GNU Emacs.
 
 * 0.5.0
 - Add FTS for adding full text search.
+- Fix for emacsql using an obsolete (or wrong) db opening function.
 * 0.4.1
 - Remove test files from GNU ELPA package.
 * 0.4.0
