@@ -35,6 +35,8 @@
 As long as the FTS table exists, this will not try to recreate
 it.  If FORCE is non-nil, then the FTS and all triggers will be
 recreated and repopulated."
+  (unless (eq triples-sqlite-interface 'builtin)
+    (error "Emacs 29.1 or later is required for triples-fts"))
   (let ((fts-existed (sqlite-select db "SELECT name FROM sqlite_master WHERE type='table' AND name='triples_fts'")))
     (when force (sqlite-execute db "DROP TABLE triples_fts"))
     (sqlite-execute db "CREATE VIRTUAL TABLE IF NOT EXISTS triples_fts USING fts5 (subject, predicate, object, content=triples, content_rowid=rowid)")

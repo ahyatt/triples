@@ -106,7 +106,7 @@ Sometimes clients of this library need to do something with the database, and th
 
 Sometimes this still doesn't cover what you might want to do.  In that case, you should write your own direct database access.  However, please follow the coding patterns for the functions above in writing it, so that the code works with both Emacs 29's builtin sqlite, and =emacsql=.
 ** Search
-Triples supports [[https://www.sqlite.org/fts5.html][SQLite's FTS5 extension]], which lets you run full text searches with scored results over text objects in the triples database.  This will create a new table.  To enable:
+Triples supports [[https://www.sqlite.org/fts5.html][SQLite's FTS5 extension]], which lets you run full text searches with scored results over text objects in the triples database.  This will create new FTS tables to store the data necessary for the search.  It is only available using the built-in sqlite in Emacs 29.1 and later.  To enable:
 
 #+begin_src emacs-lisp
 (require 'triples-fts)
