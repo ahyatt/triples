@@ -30,3 +30,51 @@
     (triples-add-schema db 'text '(text :base/type string :base/unique t))
     (triples-fts-set-predicate-abbrevs db '(("txt" . text/text)))
     (should (equal "text/text" (triples-fts-get-predicate-for-abbrev db "txt")))))
+
+(ert-deftest triples-fts-set-predicate-abbrevs-invalid ()
+  (triples-test-with-temp-db
+    (triples-add-schema db 'text '(size :base/type integer :base/unique t))
+    (should-error (triples-fts-set-predicate-abbrevs db '(("txt" . text/size))))))
+
+(ert-deftest triples-fts-set-predicate-abbrevs-not-found ()
+  (triples-test-with-temp-db
+    (should-error (triples-fts-set-predicate-abbrevs db '(("txt" . text/unknown))))))
+
+(ert-deftest triples-fts-query-subject-after-setup ()
+  (triples-test-with-temp-db
+    (triples-fts-setup db)
+    (triples-add-schema db 'text '(text :base/type string :base/unique t)
+                        '(moretext :base/type string :base/unique t))
+    (triples-set-subject db 'a '(text :text "Hello, world!" :moretext "World is bond"))
+    (triples-set-subject db 'b '(text :text "Goodbye, world!"))
+    (should (equal '(a b)
+                   (triples-fts-query-subject db "world")))
+    (should (equal '(a)
+                   (triples-fts-query-subject db "bond")))))
+
+(ert-deftest triples-fts-query-subject-added-before-setup ()
+  (triples-test-with-temp-db
+    (triples-add-schema db 'text '(text :base/type string :base/unique t)
+                        '(moretext :base/type string :base/unique t))
+    (triples-set-subject db 'a '(text :text "Hello, world!" :moretext "World is bond"))
+    (triples-set-subject db 'b '(text :text "Goodbye, world!"))
+    (triples-fts-setup db)
+    (should (equal '(a b)
+                   (triples-fts-query-subject db "world")))
+    (should (equal '(a)
+                   (triples-fts-query-subject db "bond")))))
+
+(ert-deftest triples-fts-query-subject-with-abbrev ()
+  (triples-test-with-temp-db
+    (triples-fts-setup db)
+    (triples-add-schema db 'text '(text :base/type string :base/unique t)
+                        '(tag :base/type string))
+    (triples-fts-set-predicate-abbrevs db '(("tag" . text/tag)))
+    (triples-set-subject db 'a '(text :text "Hello, world!" :tag ("foo" "bar")))
+    (should (equal '(a) (triples-fts-query-subject db "Hello")))
+    (should (equal '(a) (triples-fts-query-subject db "tag:foo world")))
+    (should (equal nil (triples-fts-query-subject db "tag:baz world")))))
+
+(provide 'triples-fts-test)
+
+;;; triples-fts-test.el ends here
