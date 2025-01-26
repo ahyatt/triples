@@ -23,10 +23,11 @@
 ;;; Code:
 
 (defvar triples-test-db-file nil
-  "The database file used in a test. This is defined so we can
-easily debug into it.")
+  "The database file used in a test.
+This is defined so we can easily debug into it.")
 
 (defmacro triples-test-with-temp-db (&rest body)
+  "Run BODY with a temporary database file."
   (declare (indent 0) (debug t))
   `(let ((db-file (make-temp-file "triples-test")))
      (unwind-protect
@@ -38,11 +39,14 @@ easily debug into it.")
        (delete-file db-file))))
 
 (defun triples-test-open-db ()
+  "Open the database file used in the current test.
+This is useful when debugging a test."
   (interactive)
   (sqlite-mode-open-file triples-test-db-file))
 
 (defmacro triples-deftest (name _ &rest body)
-  "Create a test exercising variants of `triples-sqlite-interface'."
+  "Create a test exercising variants of `triples-sqlite-interface'.
+NAME is the name of the test, and BODY is the test code."
   (declare (debug t) (indent 2))
   (let ((builtin-name (intern (format "%s-builtin" name)))
         (emacsql-name (intern (format "%s-emacsql" name))))
@@ -55,7 +59,6 @@ easily debug into it.")
          (let ((triples-sqlite-interface 'emacsql))
            (skip-unless (featurep 'emacsql))
            ,@body)))))
-
 
 (provide 'triples-test-utils)
 

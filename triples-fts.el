@@ -30,33 +30,6 @@
 (require 'sqlite)
 (require 'seq)
 
-(defun triples-fts-decolon-to-str (pred)
-  "Convert a predicate symbol PRED to a string, removing the colon."
-  (replace-regexp-in-string (rx string-start ?:) "" (symbol-name pred)))
-
-(defun triples-fts-add-predicate-abbrevs (db abbrevs)
-  "Add the predicate abbreviations ABBREVS.
-ABBREVS is an alist of abbreviations to type/predicates, such as
-`((\"tag\" . 'tagged/tag))'.
-
-This stores the abbreviation in the database DB."
-  (triples-with-transaction
-    db
-    (triples-add-schema db 'fts '(abbrev :base/type string :base/unique t))
-    (triples-add-schema db 'fts-abbrev '(predicate :base/virtual-reversed fts/abbrev))
-    (dolist (abbrev abbrevs)
-      (let* ((props (triples-properties-for-predicate db (cdr abbrev))))
-        (unless props
-          (error "Predicate %s does not exist" (cdr abbrev)))
-        (unless (eq (plist-get props :base/type) 'string)
-          (error "Predicate %s is not a string" (cdr abbrev)))
-        (triples-set-type db (symbol-name (cdr abbrev)) 'fts :abbrev (car abbrev))))))
-
-(defun triples-fts-get-predicate-for-abbrev (db abbrev)
-  "Get the predicate for ABBREV from the database DB.
-Will return the predicate as a string, or nil if not found."
-  (car (plist-get (triples-get-type db abbrev 'fts-abbrev) :predicate)))
-
 (defun triples-fts-setup (db &optional force)
   "Ensure DB has a FTS table.
 As long as the FTS table exists, this will not try to recreate
@@ -99,14 +72,14 @@ recreated and repopulated."
   ;; First, we remove all quoted strings via regexes.
   (let ((quoted-strings '())
         (quoted-strings-re (rx (seq "\"" (group (zero-or-more (not (any "\"")))) "\"")))
-        (query-copy query))
+        (query-copy (replace-regexp-in-string (rx (seq ?: (zero-or-more space))) ":" query)))
     (while (string-match quoted-strings-re query-copy)
       (push (match-string 1 query-copy) quoted-strings)
       (setq query-copy (replace-match "" t t query-copy)))
     ;; Now we split by whitespace, except for quoted strings.
     (append (split-string query-copy) quoted-strings)))
 
-(defun triples-fts--transform-query (db query)
+(defun triples-fts--transform-query (query abbrevs)
   "Rewrite abbreviations in QUERY based on `triples-fts-predicate-abbrevs`.
 
 This returns a list of new queries.  Because each triple is a row, we
@@ -115,9 +88,9 @@ intersection on the results.
 
 Because predicates that we need to match against are
 
-E.g. if `tag' is an abbreviation for `tagged/tag'
-then:
-   \"tag:foo urgent\" ==> \"predicate:\"tagged/tag\" object:\"foo\" urgent\"."
+E.g. if `tag' is an abbreviation for `tagged/tag', from the alist
+ABBREVS, then: \"tag:foo urgent\" ==> \"predicate:\"tagged/tag\"
+object:\"foo\" urgent\"."
   ;; Split by whitespace, except for quoted strings.
   (let ((segments (triples-fts--split-query query)))
     (mapcar
@@ -125,23 +98,28 @@ then:
        (if (string-match "^\\([^:]+\\):\\(.*\\)$" w)
            (let* ((prefix (match-string 1 w))
                   (rest   (match-string 2 w))
-                  (full   (triples-fts-get-predicate-for-abbrev db prefix)))
-             (if full
+                  (full   (assoc-default prefix abbrevs)))
+             (if (or full (string-match-p "/" prefix))
                  ;; Example: "tag" => "tagged/tag", rest => "foo"
-                 (format "predicate:\"%s\" object:\"%s\"" full rest)
+                 (format "predicate:\"%s\" object:\"%s\"" (or full prefix) rest)
                w))  ; No known abbreviation; just leave as-is.
          w))
      segments)))
 
-(defun triples-fts-query-subject (db query)
+(defun triples-fts-query-subject (db query &optional abbrevs)
   "Query DB with QUERY, returning only subjects.
 
 QUERY should not have operators such as AND or OR, everything is assumed
 to be ANDed together.  Phrases can be in quotes.
 
-If there are existing abbreviations, then we also expand user
-abbreviations like `tag:xyz` => `predicate:\"tagged/tag\"
-object:\"xyz\"`."
+Predicates can appear before colons to restrict a query term.  For
+example, `person/name:Billy'.  Anything with a slash in it, or matching
+an entry in ABBREV will be used to filter by a predicate, otherwise it
+is passed to FTS5 as-is.
+
+ABBREVS is an alist of abbreviations to predicate (both strings).  If
+this is populated then we also expand user abbreviations like `tag:xyz`
+=> `predicate:\"tagged/tag\" object:\"xyz\"`."
   (seq-uniq
    (mapcar
     #'triples-standardize-result
@@ -155,7 +133,7 @@ object:\"xyz\"`."
          WHERE triples_fts MATCH ?
          ORDER BY rank"
                            (list subquery))))
-                (triples-fts--transform-query db query))))))
+                (triples-fts--transform-query query abbrevs))))))
 
 (provide 'triples-fts)
 

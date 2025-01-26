@@ -119,9 +119,13 @@ Triples supports [[https://www.sqlite.org/fts5.html][SQLite's FTS5 extension]], 
 ;; relevant to least.
 (triples-fts-query-subject db "panda")
 
-;; Find the subjects for all objects with the predicate `description/text' that
-;; contain the word "panda", ordering by most relevant to least.
-(triples-fts-query-subject db "panda" :description/text)
+;; Find the subjects for all objects with the predicate `description/text' (type
+;; description, property text) that contain the word "panda", ordering by most
+;; relevant to least.
+(triples-fts-query-subject db "description/text:panda")
+
+;; The same, but with substitution with an abbreviation.
+(triples-fts-query-subject db "desc:panda" '(("desc" . "description/text")))
 #+end_src
 ** Backups
 If your application wants to back up your database, the function =triples-backup= provides the capability to do so safely.  It can be called like:

@@ -25,21 +25,6 @@
 (require 'triples-test-utils)
 (require 'triples-fts)
 
-(ert-deftest triples-fts-set-predicate-abbrevs-normal ()
-  (triples-test-with-temp-db
-    (triples-add-schema db 'text '(text :base/type string :base/unique t))
-    (triples-fts-set-predicate-abbrevs db '(("txt" . text/text)))
-    (should (equal "text/text" (triples-fts-get-predicate-for-abbrev db "txt")))))
-
-(ert-deftest triples-fts-set-predicate-abbrevs-invalid ()
-  (triples-test-with-temp-db
-    (triples-add-schema db 'text '(size :base/type integer :base/unique t))
-    (should-error (triples-fts-set-predicate-abbrevs db '(("txt" . text/size))))))
-
-(ert-deftest triples-fts-set-predicate-abbrevs-not-found ()
-  (triples-test-with-temp-db
-    (should-error (triples-fts-set-predicate-abbrevs db '(("txt" . text/unknown))))))
-
 (ert-deftest triples-fts-query-subject-after-setup ()
   (triples-test-with-temp-db
     (triples-fts-setup db)
@@ -66,14 +51,16 @@
 
 (ert-deftest triples-fts-query-subject-with-abbrev ()
   (triples-test-with-temp-db
-    (triples-fts-setup db)
-    (triples-add-schema db 'text '(text :base/type string :base/unique t)
-                        '(tag :base/type string))
-    (triples-fts-set-predicate-abbrevs db '(("tag" . text/tag)))
-    (triples-set-subject db 'a '(text :text "Hello, world!" :tag ("foo" "bar")))
-    (should (equal '(a) (triples-fts-query-subject db "Hello")))
-    (should (equal '(a) (triples-fts-query-subject db "tag:foo world")))
-    (should (equal nil (triples-fts-query-subject db "tag:baz world")))))
+    (let ((abbrevs '(("tag" . "text/tag"))))
+      (triples-fts-setup db)
+      (triples-add-schema db 'text '(text :base/type string :base/unique t)
+                          '(tag :base/type string))
+      (triples-set-subject db 'a '(text :text "Hello, world!" :tag ("foo" "bar")))
+      (should (equal '(a) (triples-fts-query-subject db "Hello" abbrevs)))
+      (should (equal '(a) (triples-fts-query-subject db "tag:foo world" abbrevs)))
+      (should (equal '(a) (triples-fts-query-subject db "tag: foo world" abbrevs)))
+      (should (equal nil (triples-fts-query-subject db "tag:baz world" abbrevs)))
+      (should (equal '(a) (triples-fts-query-subject db "text/tag:foo world" abbrevs))))))
 
 (provide 'triples-fts-test)
 
