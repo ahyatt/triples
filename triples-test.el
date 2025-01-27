@@ -26,46 +26,13 @@
 ;;; Code:
 
 (require 'triples)
+(require 'triples-test-utils)
 (require 'seq)
 (require 'kv)
 (require 'emacsql nil t)                ;; May be absent.
 (require 'emacsql-sqlite nil t)         ;; May be absent.
 
 ;;; Code:
-
-(defvar triples-test-db-file nil
-  "The database file used in a test. This is defined so we can
-easily debug into it.")
-
-(defmacro triples-test-with-temp-db (&rest body)
-  (declare (indent 0) (debug t))
-  `(let ((db-file (make-temp-file "triples-test")))
-     (unwind-protect
-         (progn
-           (let ((db (triples-connect db-file)))
-             (setq triples-test-db-file db-file)
-             ,@body
-             (triples-close db)))
-       (delete-file db-file))))
-
-(defun triples-test-open-db ()
-  (interactive)
-  (sqlite-mode-open-file triples-test-db-file))
-
-(defmacro triples-deftest (name _ &rest body)
-  "Create a test exercising variants of `triples-sqlite-interface'."
-  (declare (debug t) (indent 2))
-  (let ((builtin-name (intern (format "%s-builtin" name)))
-        (emacsql-name (intern (format "%s-emacsql" name))))
-    `(progn
-       (ert-deftest ,builtin-name ()
-         (let ((triples-sqlite-interface 'builtin))
-           (skip-unless (and (fboundp 'sqlite-available-p) (sqlite-available-p)))
-           ,@body))
-       (ert-deftest ,emacsql-name ()
-         (let ((triples-sqlite-interface 'emacsql))
-           (skip-unless (featurep 'emacsql))
-           ,@body)))))
 
 (triples-deftest triples-connect-default ()
   (let* ((triples-default-database-filename (make-temp-file "triples-default"))
