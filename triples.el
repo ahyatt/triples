@@ -117,7 +117,7 @@ If FILE is nil, use `triples-default-database-filename'."
                   db))
       ('emacsql
        (require 'emacsql)
-       (let* ((db (emacsql-sqlite file))
+       (let* ((db (emacsql-sqlite-open file))
               (triple-table-exists
                (emacsql db [:select name
                                     :from sqlite_master
