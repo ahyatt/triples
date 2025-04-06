@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/triples
 ;; Package-Requires: ((seq "2.0") (emacs "28.1"))
 ;; Keywords: triples, kg, data, sqlite
-;; Version: 0.5.0
+;; Version: 0.5.1
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 2 of the
@@ -307,7 +307,7 @@ DB is the database to delete from."
     ('emacsql (emacsql db [:delete :from triples :where (= subject $s1) :and (like predicate $r2)]
                        subject (format "%s/%%" (triples--decolon pred-prefix))))))
 
-(defun triples-db-select-pred-op (db pred op val &optional properties)
+(defun triples-db-select-pred-op (db pred op val &optional properties limit)
   "Select matching predicates with PRED having OP relation to VAL.
 
 DB is the database to select from.
@@ -317,7 +317,8 @@ is a symbol for a standard numerical comparison such as `=',
 `!=', `>', or, when `val' is a strings, `like'.  All alphabetic
 comparison is case insensitive.
 
-If PROPERTIES is given, triples must match the given properties."
+If PROPERTIES is given, triples must match the given properties.
+If LIMIT is a positive integer, limit the results to that number."
   (unless (symbolp pred)
     (error "Predicates in triples must always be symbols"))
   (let ((pred (triples--decolon pred)))
@@ -331,7 +332,8 @@ If PROPERTIES is given, triples must match the given properties."
                             "CAST(object AS INTEGER) "
                           "object COLLATE NOCASE ")
                         (symbol-name op) " ?"
-                        (when properties " AND properties = ?"))
+                        (when properties " AND properties = ?")
+                        (when (and limit (> limit 0)) (format " LIMIT %d" limit)))
                 (append
                  (list (triples-standardize-val pred)
                        (triples-standardize-val val))
@@ -350,7 +352,9 @@ If PROPERTIES is given, triples must match the given properties."
                    ('like [(like object $s2)]))
                  (when (stringp val) [:collate :nocase])
                  (when properties
-                   (list :and '(= properties $s3))))
+                   (list :and '(= properties $s3)))
+                 (when (and limit (> limit 0))
+                   (list :limit limit)))
                 pred val properties)))))
 
 (defun triples-db-select-pred-prefix (db subject pred-prefix)
@@ -702,9 +706,10 @@ This usually should not be called, it's better to just delete
 data you own with `triples-remove-type'."
   (triples-db-delete db subject))
 
-(defun triples-search (db cpred text)
-  "Search DB for instances of combined property CPRED with TEXT."
-  (triples-db-select-pred-op db cpred 'like (format "%%%s%%" text)))
+(defun triples-search (db cpred text &optional limit)
+  "Search DB for instances of combined property CPRED with TEXT.
+If LIMIT is a positive integer, limit the results to that number."
+  (triples-db-select-pred-op db cpred 'like (format "%%%s%%" text) nil limit))
 
 (defun triples-with-predicate (db cpred)
   "Return all triples in DB with CPRED as its combined predicate."
