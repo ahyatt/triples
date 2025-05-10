@@ -205,6 +205,7 @@ to be stringified."
       ;; what it would be turned into by the pcase above.
       ((pred null) "()")
       ((pred integerp) val)
+      ((pred floatp) val)
       (_ (format "%S" val)))))
 
 (defun triples-standardize-result (result)
@@ -328,9 +329,9 @@ If LIMIT is a positive integer, limit the results to that number."
                (sqlite-select
                 db
                 (concat "SELECT * FROM triples WHERE predicate = ? AND  "
-                        (if (numberp val)
-                            "CAST(object AS INTEGER) "
-                          "object COLLATE NOCASE ")
+                        (cond ((integerp val) "CAST(object AS INTEGER) ")
+                              ((floatp val) "CAST(object AS REAL) ")
+                              (t "object COLLATE NOCASE "))
                         (symbol-name op) " ?"
                         (when properties " AND properties = ?")
                         (when (and limit (> limit 0)) (format " LIMIT %d" limit)))
