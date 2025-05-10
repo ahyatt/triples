@@ -306,7 +306,8 @@
     (should (triples-verify-schema-compliant '(("foo" named/alias "bar" nil)) pal))
     (should (triples-verify-schema-compliant '(("foo" named/alias 5 nil)) pal))
     (should (triples-verify-schema-compliant '(("foo" named/alias 5 (:index 0))) pal))
-    (should (triples-verify-schema-compliant '(("m1" measurement/value 36)) pal))
+    ;; Integers are not floats, so cannot be used for float values.
+    (should-error (triples-verify-schema-compliant '(("m1" measurement/value 36)) pal))
     (should (triples-verify-schema-compliant '(("m1" measurement/value 36.6)) pal))
     (should-error (triples-verify-schema-compliant '(("m1" measurement/value "not-a-float")) pal))
     (should-error (triples-verify-schema-compliant '(("m1" measurement/value 36.6 (:index 0))) pal))))
