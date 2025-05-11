@@ -155,21 +155,45 @@
     ;; this will fail.
     (should (= 0 (length (triples-db-select-pred-op db :person/age '> 1000))))))
 
+(triples-deftest triples-test-db-select-pred-op-float ()
+  (triples-test-with-temp-db
+    (triples-add-schema db 'measurement '(value :base/unique t :base/type float))
+    (triples-set-subject db 'm1 '(measurement :value 20.5))
+    (triples-set-subject db 'm2 '(measurement :value 40.25))
+    (triples-set-subject db 'm3 '(measurement :value 60.0))
+    (should (= 2 (length (triples-db-select-pred-op db :measurement/value '> 20.5))))
+    (should (= 3 (length (triples-db-select-pred-op db :measurement/value '>= 20.5))))
+    (should (= 2 (length (triples-db-select-pred-op db :measurement/value '!= 20.5))))
+    (should (= 3 (length (triples-db-select-pred-op db :measurement/value '!= 30.0))))
+    (should (= 1 (length (triples-db-select-pred-op db :measurement/value '= 20.5))))
+    (should (= 2 (length (triples-db-select-pred-op db :measurement/value '< 60.0))))
+    (should (= 3 (length (triples-db-select-pred-op db :measurement/value '<= 60.0))))
+    (should (= 0 (length (triples-db-select-pred-op db :measurement/value '> 60.0))))
+    ;; Test with a value that might cause issues if treated as string
+    (should (= 0 (length (triples-db-select-pred-op db :measurement/value '> 100.75))))))
+
+(ert-deftest triples-test-symbols ()
+  (triples-test-with-temp-db
+    (triples-add-schema db 'enum '(value :base/unique t :base/type symbol))
+    (triples-set-type db 'foo 'enum :value 'bar)
+    (should (equal '(:value bar) (triples-get-type db 'foo 'enum)))))
+
 (ert-deftest triples-test-builtin-emacsql-compat ()
   (cl-loop for subject in '(1 a "a") do
            (let ((triples-sqlite-interface 'builtin))
              (triples-test-with-temp-db
                (triples-add-schema db 'person
                                    '(name :base/unique t :base/type string)
-                                   '(age :base/unique t :base/type integer))
-               (triples-set-type db subject 'person :name "Alice Aardvark" :age 41)
-               (should (equal (triples-get-type db subject 'person)
-                              '(:age 41 :name "Alice Aardvark")))
+                                   '(age :base/unique t :base/type integer)
+                                   '(temperature :base/unique t :base/type float))
+               (triples-set-type db subject 'person :name "Alice Aardvark" :age 41 :temperature 36.6)
+               (should (equal (triples-test-plist-sort (triples-get-type db subject 'person))
+                              (triples-test-plist-sort '(:age 41 :name "Alice Aardvark" :temperature 36.6))))
                (triples-close db)
                (let* ((triples-sqlite-interface 'emacsql)
                       (db (triples-connect db-file)))
-                 (should (equal (triples-get-type db subject 'person)
-                                '(:age 41 :name "Alice Aardvark")))
+                 (should (equal (triples-test-plist-sort (triples-get-type db subject 'person))
+                                (triples-test-plist-sort '(:age 41 :name "Alice Aardvark" :temperature 36.6))))
                  (triples-close db))
                ;; Just so the last close will work.
                (setq db (triples-connect db-file))))))
@@ -180,15 +204,16 @@
              (triples-test-with-temp-db
                (triples-add-schema db 'person
                                    '(name :base/unique t :base/type string)
-                                   '(age :base/unique t :base/type integer))
-               (triples-set-type db subject 'person :name "Alice Aardvark" :age 41)
-               (should (equal (triples-get-type db subject 'person)
-                              '(:age 41 :name "Alice Aardvark")))
+                                   '(age :base/unique t :base/type integer)
+                                   '(temperature :base/unique t :base/type float))
+               (triples-set-type db subject 'person :name "Alice Aardvark" :age 41 :temperature 36.6)
+               (should (equal (triples-test-plist-sort (triples-get-type db subject 'person))
+                              (triples-test-plist-sort '(:age 41 :name "Alice Aardvark" :temperature 36.6))))
                (triples-close db)
                (let* ((triples-sqlite-interface 'builtin)
                       (db (triples-connect db-file)))
-                 (should (equal (triples-get-type db subject 'person)
-                                '(:age 41 :name "Alice Aardvark")))
+                 (should (equal (triples-test-plist-sort (triples-get-type db subject 'person))
+                                (triples-test-plist-sort '(:age 41 :name "Alice Aardvark" :temperature 36.6))))
                  (triples-close db))
                ;; Just so the last close will work.
                (setq db (triples-connect db-file))))))
@@ -273,9 +298,17 @@
               ("Bert" named/alias "Bert" (:index 0))
               ("Bert" named/alias "Berty" (:index 1)))))))
 
+(defun triples-test-plist-sort (plist)
+  "Sort PLIST in a standard way, for comparison."
+  (kvalist->plist
+   (kvalist-sort (kvplist->alist plist)
+                 (lambda (a b) (string< (format "%s" a) (format "%s" b))))))
+
 (ert-deftest triples-schema-compliant ()
   (let ((pal '((named/name :base/type string :base/unique t)
                (named/alternate-names :base/type string :base/unique nil)
+               (measurement/value :base/type float :base/unique t)
+               (enum/value :base/type symbol :base/unique t)
                ;; Alias doesn't specify base/unique or base/type, so anything is fine.
                (named/alias))))
     (should (triples-verify-schema-compliant '(("foo" named/name "bar")) pal))
@@ -285,13 +318,14 @@
     (should-error (triples-verify-schema-compliant '(("foo" named/alternate-names "bar" nil)) pal))
     (should (triples-verify-schema-compliant '(("foo" named/alias "bar" nil)) pal))
     (should (triples-verify-schema-compliant '(("foo" named/alias 5 nil)) pal))
-    (should (triples-verify-schema-compliant '(("foo" named/alias 5 (:index 0))) pal))))
-
-(defun triples-test-plist-sort (plist)
-  "Sort PLIST in a standard way, for comparison."
-  (kvalist->plist
-   (kvalist-sort (kvplist->alist plist)
-                 (lambda (a b) (string< (format "%s" a) (format "%s" b))))))
+    (should (triples-verify-schema-compliant '(("foo" named/alias 5 (:index 0))) pal))
+    ;; Integers are not floats, so cannot be used for float values.
+    (should-error (triples-verify-schema-compliant '(("m1" measurement/value 36)) pal))
+    (should (triples-verify-schema-compliant '(("m1" measurement/value 36.6)) pal))
+    (should-error (triples-verify-schema-compliant '(("m1" measurement/value "not-a-float")) pal))
+    (should-error (triples-verify-schema-compliant '(("m1" measurement/value 36.6 (:index 0))) pal))
+    (should-error (triples-verify-schema-compliant '(("foo" enum/value "mysymbol")) pal))
+    (should (triples-verify-schema-compliant '(("foo" enum/value mysymbol)) pal))))
 
 (ert-deftest triples-crud ()
   (triples-test-with-temp-db

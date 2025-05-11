@@ -29,6 +29,8 @@ This adds a type called =person=, which can be set on any entity.  There's anoth
 
 The =person= has 2 properties, =name=, and =age=.  They are both marked as unique, so they take a single value, not a list.  If =:base/unique= was not true, the value would be a list.  We also specify what type it is, which can be any elisp type.  =employee= is similarly constructed, but has an interesting property, =reportees=, which is a =base/virtual-reversed= property, meaning that it is supplied with values, but rather can get them from the reversed relation of =employee/manager=.
 
+A valid =base/type= maps to elisp types, so can be values such as =integer=, =float=, =vector=, =cons=, =symbol=, or =string=.
+
 We'll explore how these types are used can be used in the section after next.
 ** The triples concept
 A triple is a unit of data consisting of a /subject/, a /predicate/, an /object/, and, optionally, internal metadata about the unit.  The triple can be thought of as a link between the subject and object via the predicate.
