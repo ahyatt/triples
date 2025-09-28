@@ -1,5 +1,9 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
+* 0.7.0
+- Add the ability to store information on schema types.
+* 0.6.0
+- Add a float type
 * 0.5.1
 - Add an optional limit for =triples-search=, and document it.
 * 0.5.0
