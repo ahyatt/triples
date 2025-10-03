@@ -24,6 +24,8 @@
 
 (require 'triples)
 
+(declare-function emacsql-sqlite-open "emacsql")
+
 ;;; Code:
 
 (defun triples-backups-setup (db num-to-keep strategy)

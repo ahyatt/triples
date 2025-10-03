@@ -42,6 +42,7 @@
 (declare-function emacsql-close "emacsql")
 (declare-function emacsql-sqlite "emacsql")
 (declare-function emacsql "emacsql")
+(declare-function emacsql-sqlite-open "emacsql")
 
 (defvar triples-sqlite-interface
   (if (and (fboundp 'sqlite-available-p) (sqlite-available-p))
@@ -61,6 +62,11 @@ It is invoked to make backups.")
   "The default filename triples database.
 
 If no database is specified, this file is used.")
+
+(defconst triples-basic-types '(integer float string symbol vector cons)
+  "Possible values for :base/type for objects.
+
+Everything here must be returnable by `type-of'.")
 
 (defmacro triples-with-transaction (db &rest body)
   "Create a transaction using DB, executing BODY.
@@ -513,7 +519,16 @@ definitions."
                                (cdr (assoc (nth 1 triple) prop-schema-alist)))) triples))
 
 (defun triples-add-schema (db type &rest props)
-  "Add schema for TYPE and its PROPS to DB."
+  "Add schema for TYPE and its PROPS to DB.
+If a `:base/type' is not specified, it is assumed to be a string."
+  ;; First, make sure all props are compliant with `triples-basic-types'.
+  (mapc (lambda (prop)
+          (when (consp prop)
+            (let ((settings (cdr prop)))
+              (when (and (plistp settings) (plist-get settings :base/type)
+                         (not (member (plist-get settings :base/type) triples-basic-types)))
+                (error "Property types must be a in `triples-basic-types'")))))
+        props)
   (triples--add db (apply #'triples--add-schema-op type props)))
 
 (defun triples--add-schema-op (type &rest props)
@@ -564,9 +579,14 @@ PROPERTIES is a plist of properties, without TYPE prefixes."
              (triples-properties-for-predicate db (triples-type-and-prop-to-combined type 'schema/property)))
             (mapcar (lambda (prop)
                       (cons (triples--decolon prop)
-                            (triples-properties-for-predicate
-                             db
-                             (triples-type-and-prop-to-combined type prop))))
+                            (triples--plist-mapcan
+                             (lambda (prop value)
+                               (when (or (not (eq prop :base/type))
+                                         (member value triples-basic-types))
+                                 (list prop value)))
+                             (triples-properties-for-predicate
+                              db
+                              (triples-type-and-prop-to-combined type prop)))))
                     (triples--plist-mapcar (lambda (k _) k) properties))))
          (op (triples--set-type-op subject type properties prop-schema-alist)))
     (triples-verify-schema-compliant

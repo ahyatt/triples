@@ -261,6 +261,31 @@
               (named schema/property alternate-names)
               (named schema/property nicknames))))))
 
+(ert-deftest triples-add-schema-only-basic-types ()
+  (triples-test-with-temp-db
+    ;; This has only basic types, so should work fine.
+    (triples-add-schema db 'named '(name :base/type string :base/unique t)
+                        'alternate-names
+                        '(idf :base/type float :base/unique t)
+                        '(length :base/type integer :base/unique t)
+                        '(type :base/type symbol :base/unique t)
+                        '(stats :base/type vector :base/unique t)
+                        '(attributes :base/type cons :base/unique t))
+    ;; This should not work, the type is unknown
+    (should-error
+     (triples-add-schema db 'bad '(name :base/type string :base/unique t)
+                         '(alias :base/type unknown-type)))
+
+    ;; This should not work, the type is known but not a basic type
+    (should-error
+     (triples-add-schema db 'also-bad '(name :base/type string :base/unique t)
+                         '(alias :base/type named)))
+
+    ;; This should not work, it's an elisp type but not a basic one
+    (should-error
+     (triples-add-schema db 'still-bad '(name :base/type string :base/unique t)
+                         '(alias :base/type list)))))
+
 (defun triples-test-list-sort (list)
   "Standard sort for LIST for test stability."
   (sort list (lambda (a b) (string< (format "%S" a) (format "%S" b)))))
@@ -326,6 +351,19 @@
     (should-error (triples-verify-schema-compliant '(("m1" measurement/value 36.6 (:index 0))) pal))
     (should-error (triples-verify-schema-compliant '(("foo" enum/value "mysymbol")) pal))
     (should (triples-verify-schema-compliant '(("foo" enum/value mysymbol)) pal))))
+
+(ert-deftest triples-schema-compliant-two-types ()
+  ;; Schema types (such as 'named/name) can have other types as well.  If so, it
+  ;; shouldn't cause issues, if 'named-name is a string, and the other type is
+  ;; some rich type such as 'labeled/labeld strings are still valid even
+  ;; though they don't match both types.
+
+  ;; In this case, it's `triples-set-type' that needs to handle this correctly.
+  (triples-test-with-temp-db
+    (triples-add-schema db 'named '(name :base/type string :base/unique t) 'alias)
+    (triples-add-schema db 'labeled '(label :base/unique t :base/type string))
+    (triples-set-type db 'named/name 'labeled :label "Name")
+    (triples-set-type db "foo" 'named :name "Fred")))
 
 (ert-deftest triples-crud ()
   (triples-test-with-temp-db
