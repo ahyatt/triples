@@ -1,7 +1,7 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
 * 0.6.2
-- Fix FTS bug that can corrupt the FTS index.
+- Fix FTS bug on deleted data that can corrupt the FTS index.
 - Better errors on db open failures.
 * 0.6.1
 - Fix bug breaking the ability to store information on schema types.
