@@ -38,7 +38,7 @@ recreated and repopulated."
   (unless (eq triples-sqlite-interface 'builtin)
     (error "Emacs 29.1 or later is required for triples-fts"))
   (let ((fts-existed (sqlite-select db "SELECT name FROM sqlite_master WHERE type='table' AND name='triples_fts'")))
-    (when force (sqlite-execute db "DROP TABLE triples_fts"))
+    (when (and force fts-existed) (sqlite-execute db "DROP TABLE triples_fts"))
     (sqlite-execute db "CREATE VIRTUAL TABLE IF NOT EXISTS triples_fts USING fts5 (subject, predicate, object, content=triples, content_rowid=rowid)")
     ;; Triggers that will update triples_fts, but only for text objects.
     ;; New rows:
@@ -61,7 +61,7 @@ recreated and repopulated."
     (sqlite-execute db "CREATE TRIGGER IF NOT EXISTS triples_fts_delete AFTER DELETE ON triples
       WHEN old.object IS NOT NULL AND typeof(old.object) = 'text'
       BEGIN
-        INSERT INTO triples_fts (triples_fts, subject, predicate, object) VALUES ('delete', old.subject, old.predicate, old.object);
+        INSERT INTO triples_fts (triples_fts, rowid, subject, predicate, object) VALUES ('delete', old.rowid, old.subject, old.predicate, old.object);
       END")
     (if (or force (not fts-existed)) (triples-fts-rebuild db))))
 

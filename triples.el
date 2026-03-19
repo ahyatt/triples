@@ -112,6 +112,8 @@ If FILE is nil, use `triples-default-database-filename'."
   (let ((file (or file triples-default-database-filename)))
     (pcase triples-sqlite-interface
       ('builtin (let* ((db (sqlite-open file)))
+                  (unless (sqlitep db)
+                    (error "Could not open sqlite database at %s" file))
                   (condition-case nil
                       (progn
                         (triples-setup-table-for-builtin db)
