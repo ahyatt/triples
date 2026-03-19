@@ -37,6 +37,17 @@
     (should (equal '(a)
                    (triples-fts-query-subject db "bond")))))
 
+(ert-deftest triples-fts-deletion ()
+  (triples-test-with-temp-db
+    (triples-fts-setup db)
+    (triples-add-schema db 'text '(text :base/type string :base/unique t))
+    (triples-set-subject db 'a '(text :text "Hello, world!"))
+    (triples-set-subject db 'b '(text :text "Goodbye, world!"))
+    (should (equal '(a) (triples-fts-query-subject db "Hello")))
+    (triples-delete-subject db 'a)
+    (should (equal nil (triples-fts-query-subject db "Hello")))
+    (should (equal '(b) (triples-fts-query-subject db "world")))))
+
 (ert-deftest triples-fts-query-subject-added-before-setup ()
   (triples-test-with-temp-db
     (triples-add-schema db 'text '(text :base/type string :base/unique t)
