@@ -611,13 +611,15 @@ FORM is the code to delay."
 (defun triples--with-transaction (db body-fun)
   "Wrap BODY-FUN in a transaction for DB."
   (pcase triples-sqlite-interface
-    ('builtin  (condition-case err
-                   (progn
-                     (sqlite-transaction db)
-                     (funcall body-fun)
-                     (sqlite-commit db))
-                 (error (sqlite-rollback db)
-                        (signal (car err) (cdr err)))))
+    ('builtin
+     (let ((name (symbol-name (gensym "savepoint"))))
+       (condition-case err
+           (progn
+             (sqlite-execute db (format "SAVEPOINT %s" name))
+             (funcall body-fun)
+             (sqlite-execute db (format "RELEASE SAVEPOINT %s" name)))
+         (error (sqlite-execute db "ROLLBACK SAVEPOINT %s" name)
+                (signal (car err) (cdr err))))))
     ('emacsql (funcall (triples--eval-when-fboundp emacsql-with-transaction
                          (lambda (db body-fun)
                            (emacsql-with-transaction db (funcall body-fun))))

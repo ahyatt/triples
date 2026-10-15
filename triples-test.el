@@ -41,6 +41,23 @@
     (triples-close db)
     (should (file-exists-p triples-default-database-filename))))
 
+(triples-deftest triples-test-nested-transactions ()
+  (triples-test-with-temp-db
+    (condition-case err
+        (progn
+          (triples-with-transaction
+            db
+            (triples-db-insert db "sub2" 'pred "obj2")
+            (triples-with-transaction
+              db
+              (triples-db-insert db "sub1" 'pred "obj1"))
+            (error ""))
+          (ert-fail "Transactions should not have caught error"))
+      (error
+       ;; Nothing should exist because everything should be wrapped in the top
+       ;; transaction that got aborted because of the error.
+       (should (= (triples-count db) 0))))))
+
 (triples-deftest triples-test-insert ()
   (triples-test-with-temp-db
     (triples-db-insert db "sub" 'pred "obj")
