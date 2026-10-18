@@ -57,6 +57,16 @@
         (error "")))
     (should (= (triples-count db) 1))))
 
+(triples-deftest triples-test-move-subject-in-transaction ()
+  (triples-test-with-temp-db
+    (triples-with-transaction
+      db
+      (triples-add-schema db 'named '(name :base/unique t))
+      (triples-set-subject db 123 '(named :name "Ada Lovelace"))
+      (triples-move-subject db 123 456))
+    (should-not (triples-get-subject db 123))
+    (should (triples-get-subject db 456))))
+
 (triples-deftest triples-test-nested-transactions-nested-failure ()
   (triples-test-with-temp-db
     (condition-case err
