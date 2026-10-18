@@ -6,7 +6,7 @@
 ;; Homepage: https://github.com/ahyatt/triples
 ;; Package-Requires: ((seq "2.0") (emacs "28.1"))
 ;; Keywords: triples, kg, data, sqlite
-;; Version: 0.7.0
+;; Version: 0.7.1
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 2 of the
@@ -432,20 +432,15 @@ This will throw an error if there is an existing subject
 NEW-SUBJECT with at least one equal property (such as type
 markers).  But if there are no commonalities, the OLD-SUBJECT is
 merged into NEW-SUBJECT."
-  (pcase triples-sqlite-interface
-    ('builtin
-     (condition-case err
-         (progn
-           (sqlite-transaction db)
-           (sqlite-execute db "UPDATE triples SET subject = ? WHERE subject = ?"
-                           (list (triples-standardize-val new-subject) (triples-standardize-val old-subject)))
-           (sqlite-execute db "UPDATE triples SET object = ? WHERE object = ?"
-                           (list (triples-standardize-val new-subject) (triples-standardize-val old-subject)))
-           (sqlite-commit db))
-       (error (sqlite-rollback db)
-              (signal 'error err))))
-    ('emacsql
-     (emacsql-with-transaction db
+  (triples-with-transaction
+    db
+    (pcase triples-sqlite-interface
+      ('builtin
+       (sqlite-execute db "UPDATE triples SET subject = ? WHERE subject = ?"
+                       (list (triples-standardize-val new-subject) (triples-standardize-val old-subject)))
+       (sqlite-execute db "UPDATE triples SET object = ? WHERE object = ?"
+                       (list (triples-standardize-val new-subject) (triples-standardize-val old-subject))))
+      ('emacsql
        (emacsql db [:update triples :set (= subject $s1) :where (= subject $s2)]
                 new-subject old-subject)
        (emacsql db [:update triples :set (= object $s1) :where (= object $s2)]
@@ -619,6 +614,7 @@ FORM is the code to delay."
              (funcall body-fun)
              (sqlite-execute db (format "RELEASE SAVEPOINT %s" name)))
          (error (sqlite-execute db (format "ROLLBACK TO SAVEPOINT %s" name))
+                (sqlite-execute db (format "RELEASE SAVEPOINT %s" name))
                 (signal (car err) (cdr err))))))
     ('emacsql (funcall (triples--eval-when-fboundp emacsql-with-transaction
                          (lambda (db body-fun)
