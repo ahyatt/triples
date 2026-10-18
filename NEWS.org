@@ -1,7 +1,7 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
 * 0.7.1
-- Fix commit inside =triples-move-subject=, which did not work with new nested transactionsi.
+- Fix commit inside =triples-move-subject=, which did not work with new nested transactions.
 * 0.7.0
 - Support nested transactions correctly on built-in sqlite.
 * 0.6.2
