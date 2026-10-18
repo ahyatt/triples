@@ -1,5 +1,7 @@
 TITLE: Changelog for the triples module for GNU Emacs.
 
+* 0.7.0
+- Support nested transactions correctly on built-in sqlite
 * 0.6.2
 - Fix FTS bug on deleted data that can corrupt the FTS index.
 - Better errors on db open failures.
