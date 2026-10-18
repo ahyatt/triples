@@ -41,7 +41,23 @@
     (triples-close db)
     (should (file-exists-p triples-default-database-filename))))
 
-(triples-deftest triples-test-nested-transactions ()
+(triples-deftest triples-test-transacttion ()
+  (triples-test-with-temp-db
+    (triples-with-transaction
+      db
+      (triples-db-insert db "sub1" 'pred "obj1")
+      ;; We should be able to see our own insert here
+      (should (= (triples-count db) 1)))
+    (should (= (triples-count db) 1))
+    (ignore-errors
+      (triples-with-transaction
+        db
+        (triples-db-insert db "sub2" 'pred "obj2")
+        (should (= (triples-count db) 2))
+        (error "")))
+    (should (= (triples-count db) 1))))
+
+(triples-deftest triples-test-nested-transactions-nested-failure ()
   (triples-test-with-temp-db
     (condition-case err
         (progn
@@ -51,6 +67,7 @@
             (triples-with-transaction
               db
               (triples-db-insert db "sub1" 'pred "obj1"))
+            ;; Inner transaction has completed, now we error.
             (error ""))
           (ert-fail "Transactions should not have caught error"))
       (error

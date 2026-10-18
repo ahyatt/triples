@@ -618,7 +618,7 @@ FORM is the code to delay."
              (sqlite-execute db (format "SAVEPOINT %s" name))
              (funcall body-fun)
              (sqlite-execute db (format "RELEASE SAVEPOINT %s" name)))
-         (error (sqlite-execute db "ROLLBACK SAVEPOINT %s" name)
+         (error (sqlite-execute db (format "ROLLBACK TO SAVEPOINT %s" name))
                 (signal (car err) (cdr err))))))
     ('emacsql (funcall (triples--eval-when-fboundp emacsql-with-transaction
                          (lambda (db body-fun)
