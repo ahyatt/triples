@@ -67,20 +67,23 @@
     (should-not (triples-get-subject db 123))
     (should (triples-get-subject db 456))))
 
-(triples-deftest triples-test-transaction-move-subject ()
+(triples-deftest triples-test-nested-transactions-nested-failure ()
   (triples-test-with-temp-db
-    (triples-add-schema db 'named '(name :base/unique t))
-    (triples-add-schema db 'friend '(id :base/unique t))
-    (triples-set-subject db 123 '(named :name "Ada Lovelace"))
-    (triples-set-subject db 456 '(named :name "Michael Faraday")
-                         '(friend :id 123))
-    (triples-set-subject db 987 '(named :name "To Be Deleted"))
-    (should-error (triples-move-subject db 123 987))
-    (triples-delete-subject db 987)
-    (triples-move-subject db 123 987)
-    (should-not (triples-get-subject db 123))
-    (should (equal "Ada Lovelace" (plist-get (triples-get-subject db 987) :named/name)))
-    (should (equal 987 (plist-get (triples-get-subject db 456) :friend/id)))))
+    (condition-case err
+        (progn
+          (triples-with-transaction
+            db
+            (triples-db-insert db "sub2" 'pred "obj2")
+            (triples-with-transaction
+              db
+              (triples-db-insert db "sub1" 'pred "obj1"))
+            ;; Inner transaction has completed, now we error.
+            (error ""))
+          (ert-fail "Transactions should not have caught error"))
+      (error
+       ;; Nothing should exist because everything should be wrapped in the top
+       ;; transaction that got aborted because of the error.
+       (should (= (triples-count db) 0))))))
 
 (triples-deftest triples-test-insert ()
   (triples-test-with-temp-db
